@@ -1,0 +1,32 @@
+hash: d2911df3f38a5e82ad2946046e38b7092d0ebed3a57905f02d1a2b9a6d92a98b
+updated: 2017-05-16T15:48:29.446177982+09:00
+imports:
+- name: github.com/golang/protobuf
+  version: fec3b39b059c0f88fa6b20f5ed012b1aa203a8b4
+  subpackages:
+  - descriptor
+  - jsonpb/jsonpb_test_proto
+  - proto
+  - proto/proto3_proto
+  - proto/testdata
+  - protoc-gen-go/descriptor
+  - protoc-gen-go/generator
+  - protoc-gen-go/grpc
+  - protoc-gen-go/plugin
+  - ptypes
+  - ptypes/any
+  - ptypes/duration
+  - ptypes/struct
+  - ptypes/timestamp
+  - ptypes/wrappers
+- name: github.com/pkg/errors
+  version: c605e284fe17294bda444b34710735b29d1a9d90
+testImports:
+- name: golang.org/x/net
+  version: 34057069f4ab13dc4433c68d368737ebeafcccdc
+  subpackages:
+  - context
+- name: golang.org/x/sync
+  version: 57af736625aaa69dfa099432bb67e0808eef3bcc
+  subpackages:
+  - errgroup

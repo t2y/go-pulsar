@@ -1,0 +1,19 @@
+package: github.com/t2y/go-pulsar
+import:
+- package: github.com/golang/protobuf
+  subpackages:
+  - proto
+  - proto/testdata
+  - protoc-gen-go/descriptor
+  - protoc-gen-go/generator
+  - protoc-gen-go/grpc
+  - protoc-gen-go/plugin
+  - ptypes/any
+  - ptypes/duration
+  - ptypes/struct
+  - ptypes/timestamp
+  - ptypes/wrappers
+testImport:
+- package: golang.org/x/sync
+  subpackages:
+  - errgroup
