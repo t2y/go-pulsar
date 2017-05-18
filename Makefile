@@ -40,11 +40,12 @@ deps:
 
 .PHONY: build
 build:
-	go build -o bin/pcli ./cmd/pcli
+	@mkdir -p bin
+	go build -o ./bin/pcli ./cmd/pcli
 
 .PHONY: clean
 clean:
-	rm -f cmd/pcli/pcli
+	rm -f .bin/pcli
 
 .PHONY: test
 test:
