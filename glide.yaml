@@ -13,6 +13,8 @@ import:
   - ptypes/struct
   - ptypes/timestamp
   - ptypes/wrappers
+- package: gopkg.in/ini.v1
+  version: v1.27.2
 testImport:
 - package: golang.org/x/sync
   subpackages:
