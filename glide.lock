@@ -1,5 +1,5 @@
-hash: 0a1ceb197713fea671e55ff354d8cdcb6f27ae42044658db51327b00cd60c7bd
-updated: 2017-05-19T08:29:51.080536958+09:00
+hash: 9337ec520156e737b13049eb457cc90f712e45e48dba4373e88af1d1cdf2891e
+updated: 2017-05-19T09:28:29.259063687+09:00
 imports:
 - name: github.com/golang/protobuf
   version: fec3b39b059c0f88fa6b20f5ed012b1aa203a8b4
@@ -15,10 +15,16 @@ imports:
   - ptypes/struct
   - ptypes/timestamp
   - ptypes/wrappers
+- name: github.com/jessevdk/go-flags
+  version: 460c7bb0abd6e927f2767cadc91aa6ef776a98b4
 - name: github.com/pkg/errors
   version: c605e284fe17294bda444b34710735b29d1a9d90
 - name: github.com/Sirupsen/logrus
   version: 5e5dc898656f695e2a086b8e12559febbfc01562
+- name: golang.org/x/sys
+  version: a2e06a18b0d52d8cb2010e04b372a1965d8e3439
+  subpackages:
+  - unix
 - name: gopkg.in/ini.v1
   version: 36da989cdc560b989d8f195aec46214d33665d20
 testImports:

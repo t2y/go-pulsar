@@ -15,7 +15,8 @@ import (
 )
 
 const (
-	FrameFieldSize = 4
+	DefaultDeadlineTimeout = time.Duration(10) * time.Second
+	FrameFieldSize         = 4
 )
 
 type Client struct {
@@ -111,7 +112,8 @@ func NewClient(c *Config) (client *Client, err error) {
 	conn.SetDeadline(deadline)
 
 	log.WithFields(log.Fields{
-		"deadline": deadline,
+		"remoteAddr": c.RemoteAddr,
+		"deadline":   deadline,
 	}).Debug("client settings")
 
 	client = &Client{

@@ -15,6 +15,7 @@ import:
   - ptypes/wrappers
 - package: gopkg.in/ini.v1
 - package: github.com/Sirupsen/logrus
+- package: github.com/jessevdk/go-flags
 testImport:
 - package: golang.org/x/sync
   subpackages:

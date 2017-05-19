@@ -35,14 +35,14 @@ type Config struct {
 	LogLevel log.Level
 }
 
-func ReadIniFile(path string) (c *Config, err error) {
+func LoadIniFile(path string) (iniConf *IniConfig, err error) {
 	f, err := ini.Load(path)
 	if err != nil {
 		err = errors.Wrap(err, "failed to load ini")
 		return
 	}
 
-	iniConf := new(IniConfig)
+	iniConf = new(IniConfig)
 	if err = f.MapTo(iniConf); err != nil {
 		err = errors.Wrap(err, "failed to map ini struct:")
 		return
@@ -67,12 +67,10 @@ func ReadIniFile(path string) (c *Config, err error) {
 		"path":    path,
 		"iniConf": iniConf,
 	}).Debug("read and parse ini file")
-
-	c, err = NewConfig(iniConf)
 	return
 }
 
-func NewConfig(iniConf *IniConfig) (c *Config, err error) {
+func NewConfigFromIni(iniConf *IniConfig) (c *Config, err error) {
 	remoteTcpAddr, err := net.ResolveTCPAddr(PROTO_TCP, iniConf.URL.Host)
 	if err != nil {
 		err = errors.Wrap(err, "failed to resolve remote tcp address")
@@ -88,5 +86,36 @@ func NewConfig(iniConf *IniConfig) (c *Config, err error) {
 		URL:      iniConf.URL,
 		LogLevel: iniConf.LogLevel,
 	}
+	return
+}
+
+func NewConfigFromOptions(opts *Options) (c *Config, err error) {
+	c = &Config{
+		Proto:     PROTO_TCP,
+		LocalAddr: nil,
+		LogLevel:  log.InfoLevel,
+	}
+
+	if opts.URL != nil {
+		var remoteTcpAddr *net.TCPAddr
+		remoteTcpAddr, err = net.ResolveTCPAddr(PROTO_TCP, opts.URL.Host)
+		if err != nil {
+			err = errors.Wrap(err, "failed to resolve remote tcp address")
+			return
+		}
+		c.RemoteAddr = remoteTcpAddr
+		c.URL = opts.URL
+	}
+
+	if opts.Timeout == nil {
+		c.Timeout = DefaultDeadlineTimeout
+	} else {
+		c.Timeout = *opts.Timeout
+	}
+
+	if opts.Verbose {
+		c.LogLevel = log.DebugLevel
+	}
+
 	return
 }
