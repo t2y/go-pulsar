@@ -263,6 +263,23 @@ func NewBaseWithMessage(msg proto.Message) (c *Base, err error) {
 	return
 }
 
+func NewMarshaledBase(msg proto.Message) (data []byte, err error) {
+	var cmd *Base
+	cmd, err = NewBaseWithMessage(msg)
+	if err != nil {
+		err = errors.Wrap(err, "failed to create command")
+		return
+	}
+
+	data, err = cmd.Marshal()
+	if err != nil {
+		err = errors.Wrap(err, "failed to marshal command")
+		return
+	}
+
+	return
+}
+
 func NewBase() (c *Base) {
 	c = new(Base)
 	return

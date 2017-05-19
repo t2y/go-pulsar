@@ -18,7 +18,11 @@ import (
 
 const (
 	DefaultDeadlineTimeout = time.Duration(10) * time.Second
-	FrameFieldSize         = 4
+
+	FrameSizeFieldSize        = 4
+	FrameMagicNumberFieldSize = 2
+	FrameChecksumSize         = 2
+	FrameMetadataFieldSize    = 4
 )
 
 const (
@@ -50,16 +54,9 @@ func (c *Client) Send(data []byte) (total int, err error) {
 }
 
 func (c *Client) SendCommand(msg proto.Message) (n int, err error) {
-	var cmd *command.Base
-	cmd, err = command.NewBaseWithMessage(msg)
+	data, err := command.NewMarshaledBase(msg)
 	if err != nil {
-		err = errors.Wrap(err, "failed to create command")
-		return
-	}
-
-	data, err := cmd.Marshal()
-	if err != nil {
-		err = errors.Wrap(err, "failed to marshal command")
+		err = errors.Wrap(err, "failed to initialize command")
 		return
 	}
 
@@ -72,16 +69,17 @@ func (c *Client) SendCommand(msg proto.Message) (n int, err error) {
 	return
 }
 
-func (c *Client) ReceiveCommand(
-	typ *pulsar_proto.BaseCommand_Type,
-) (msg proto.Message, err error) {
-	totalFrame := bytes.NewBuffer(make([]byte, 0, FrameFieldSize))
-	if _, err = io.CopyN(totalFrame, c.conn, FrameFieldSize); err != nil {
+func (c *Client) Receive() (
+	cmdData []byte, hasPayload bool, metadata []byte, payload []byte, err error,
+) {
+	totalFrame := bytes.NewBuffer(make([]byte, 0, FrameSizeFieldSize))
+	if _, err = io.CopyN(totalFrame, c.conn, FrameSizeFieldSize); err != nil {
 		err = errors.Wrap(err, "failed to receive total frame")
 		return
 	}
 
 	totalSize := binary.BigEndian.Uint32(totalFrame.Bytes())
+	log.Debug(totalSize)
 	cmdSizeAndData := bytes.NewBuffer(make([]byte, 0, totalSize))
 	if _, err = io.CopyN(cmdSizeAndData, c.conn, int64(totalSize)); err != nil {
 		err = errors.Wrap(err, "failed to receive command frame")
@@ -89,13 +87,41 @@ func (c *Client) ReceiveCommand(
 	}
 
 	frames := cmdSizeAndData.Bytes()
-	cmdSize := binary.BigEndian.Uint32(frames[0:FrameFieldSize])
-	data := frames[FrameFieldSize:]
-	dataLength := len(data)
-	if cmdSize != uint32(dataLength) {
-		err = errors.Errorf(
-			"command size value and actual data length are not matched:"+
-				" size: %d, length: %d", cmdSize, dataLength)
+	cmdDataSize := binary.BigEndian.Uint32(frames[0:FrameSizeFieldSize])
+	log.Debug(cmdDataSize)
+	cmdDataSizePos := FrameSizeFieldSize + cmdDataSize
+	cmdData = frames[FrameSizeFieldSize:cmdDataSizePos]
+
+	if totalSize > cmdDataSize+FrameSizeFieldSize {
+		hasPayload = true
+		magicNumberPos := cmdDataSizePos + FrameMagicNumberFieldSize
+		magicNumber := frames[cmdDataSize:magicNumberPos]
+		log.Debug(magicNumber)
+
+		checksumPos := magicNumberPos + FrameChecksumSize
+		checksum := frames[magicNumberPos:checksumPos]
+		log.Debug(checksum)
+
+		metadataSizePos := checksumPos + FrameMetadataFieldSize
+		metadataSize := binary.BigEndian.Uint32(frames[checksumPos:metadataSizePos])
+		log.Debug(metadataSize)
+
+		metadataPos := metadataSizePos + metadataSize
+		metadata = frames[metadataSizePos:metadataPos]
+		log.Debug(metadata)
+		payload = frames[metadataPos:]
+		log.Debug(payload)
+	}
+
+	return
+}
+
+func (c *Client) ReceiveCommand(
+	typ *pulsar_proto.BaseCommand_Type,
+) (msg proto.Message, err error) {
+	cmdData, hasPayload, metadata, payload, err := c.Receive()
+	if err != nil {
+		err = errors.Wrap(err, "failed to receive command")
 		return
 	}
 
@@ -105,10 +131,17 @@ func (c *Client) ReceiveCommand(
 		return
 	}
 
-	msg, err = cmd.Unmarshal(typ, data)
+	msg, err = cmd.Unmarshal(typ, cmdData)
 	if err != nil {
 		err = errors.Wrap(err, "failed to unmarshal command")
 		return
+	}
+
+	if hasPayload {
+		log.WithFields(log.Fields{
+			"metadata": metadata,
+			"payload":  payload,
+		}).Debug("metadata and payload")
 	}
 
 	return
