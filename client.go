@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"io"
 	"net"
+	"sync"
 	"time"
 
 	log "github.com/Sirupsen/logrus"
@@ -20,8 +21,23 @@ const (
 	FrameFieldSize         = 4
 )
 
+const (
+	ClientName             = "go-pulsar"
+	DefaultProtocolVersion = 7
+)
+
+type ClientState int
+
+const (
+	ClientStateNone             ClientState = 0
+	ClientStateSentConnectFrame ClientState = 1
+	ClientStateReady            ClientState = 2
+)
+
 type Client struct {
-	conn *net.TCPConn
+	conn  *net.TCPConn
+	mutex sync.Mutex
+	state ClientState
 }
 
 func (c *Client) Send(data []byte) (total int, err error) {
@@ -98,8 +114,73 @@ func (c *Client) ReceiveCommand(
 	return
 }
 
+func (c *Client) KeepAlive() (err error) {
+	c.mutex.Lock()
+	defer c.mutex.Unlock()
+
+	_, err = c.SendCommand(&pulsar_proto.CommandPing{})
+	if err != nil {
+		err = errors.Wrap(err, "failed to send ping command")
+		return
+	}
+
+	_, err = c.ReceiveCommand(
+		pulsar_proto.BaseCommand_PONG.Enum(),
+	)
+	if err != nil {
+		err = errors.Wrap(err, "failed to receive pong command")
+		return
+	}
+
+	log.Debug("keepalive")
+	return
+}
+
+func (c *Client) Connect() (err error) {
+	c.mutex.Lock()
+	defer c.mutex.Unlock()
+
+	if c.state == ClientStateReady {
+		log.Debug("connection has already established")
+		return
+	}
+
+	connect := &pulsar_proto.CommandConnect{
+		ClientVersion:   proto.String(ClientName),
+		AuthMethod:      pulsar_proto.AuthMethod_AuthMethodNone.Enum(),
+		ProtocolVersion: proto.Int32(DefaultProtocolVersion),
+	}
+
+	_, err = c.SendCommand(connect)
+	if err != nil {
+		err = errors.Wrap(err, "failed to send connect command")
+		return
+	}
+	log.Debug("sent connect")
+
+	msg, err := c.ReceiveCommand(
+		pulsar_proto.BaseCommand_CONNECTED.Enum(),
+	)
+	if err != nil {
+		err = errors.Wrap(err, "failed to receive connected command")
+		return
+	}
+	c.state = ClientStateReady
+
+	connected := msg.(*pulsar_proto.CommandConnected)
+	log.WithFields(log.Fields{
+		"connected": connected,
+	}).Debug("connection is ready")
+
+	return
+}
+
 func (c *Client) Close() (err error) {
+	c.mutex.Lock()
+	defer c.mutex.Unlock()
+
 	err = c.conn.Close()
+	c.state = ClientStateNone
 	return
 }
 
@@ -118,7 +199,8 @@ func NewClient(c *Config) (client *Client, err error) {
 	}).Debug("client settings")
 
 	client = &Client{
-		conn: conn,
+		conn:  conn,
+		state: ClientStateNone,
 	}
 	return
 }
