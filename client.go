@@ -11,6 +11,7 @@ import (
 	"github.com/golang/protobuf/proto"
 	"github.com/pkg/errors"
 
+	command "github.com/t2y/go-pulsar/proto/command"
 	pulsar_proto "github.com/t2y/go-pulsar/proto/pb"
 )
 
@@ -33,8 +34,8 @@ func (c *Client) Send(data []byte) (total int, err error) {
 }
 
 func (c *Client) SendCommand(msg proto.Message) (n int, err error) {
-	var cmd *Command
-	cmd, err = NewCommandWithMessage(msg)
+	var cmd *command.Base
+	cmd, err = command.NewBaseWithMessage(msg)
 	if err != nil {
 		err = errors.Wrap(err, "failed to create command")
 		return
@@ -82,7 +83,7 @@ func (c *Client) ReceiveCommand(
 		return
 	}
 
-	cmd, err := NewCommandWithType(typ)
+	cmd, err := command.NewBaseWithType(typ)
 	if err != nil {
 		err = errors.Wrap(err, "failed to create command")
 		return

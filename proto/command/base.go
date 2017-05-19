@@ -1,4 +1,4 @@
-package pulsar
+package command
 
 import (
 	"github.com/golang/protobuf/proto"
@@ -7,16 +7,16 @@ import (
 	pulsar_proto "github.com/t2y/go-pulsar/proto/pb"
 )
 
-type Command struct {
+type Base struct {
 	base pulsar_proto.BaseCommand
 }
 
-func (c *Command) GetRawCommand() (raw *pulsar_proto.BaseCommand) {
+func (c *Base) GetRawCommand() (raw *pulsar_proto.BaseCommand) {
 	raw = &c.base
 	return
 }
 
-func (c *Command) Marshal() (data []byte, err error) {
+func (c *Base) Marshal() (data []byte, err error) {
 	data, err = proto.Marshal(&c.base)
 	if err != nil {
 		err = errors.Wrap(err, "failed to proto.Marshal")
@@ -39,7 +39,7 @@ func (c *Command) Marshal() (data []byte, err error) {
 	return
 }
 
-func (c *Command) Unmarshal(
+func (c *Base) Unmarshal(
 	typ *pulsar_proto.BaseCommand_Type,
 	buf []byte,
 ) (msg proto.Message, err error) {
@@ -107,7 +107,7 @@ func (c *Command) Unmarshal(
 	return
 }
 
-func (c *Command) SetType(typ *pulsar_proto.BaseCommand_Type) (err error) {
+func (c *Base) SetType(typ *pulsar_proto.BaseCommand_Type) (err error) {
 	c.base.Type = typ
 	switch t := *typ; t {
 	case pulsar_proto.BaseCommand_CONNECT:
@@ -167,7 +167,7 @@ func (c *Command) SetType(typ *pulsar_proto.BaseCommand_Type) (err error) {
 	return
 }
 
-func (c *Command) SetMessage(msg proto.Message) (err error) {
+func (c *Base) SetMessage(msg proto.Message) (err error) {
 	switch t := msg.(type) {
 	case *pulsar_proto.CommandConnect:
 		c.base.Type = pulsar_proto.BaseCommand_CONNECT.Enum()
@@ -251,19 +251,19 @@ func (c *Command) SetMessage(msg proto.Message) (err error) {
 	return
 }
 
-func NewCommandWithType(typ *pulsar_proto.BaseCommand_Type) (c *Command, err error) {
-	c = new(Command)
+func NewBaseWithType(typ *pulsar_proto.BaseCommand_Type) (c *Base, err error) {
+	c = new(Base)
 	err = c.SetType(typ)
 	return
 }
 
-func NewCommandWithMessage(msg proto.Message) (c *Command, err error) {
-	c = new(Command)
+func NewBaseWithMessage(msg proto.Message) (c *Base, err error) {
+	c = new(Base)
 	err = c.SetMessage(msg)
 	return
 }
 
-func NewCommand() (c *Command) {
-	c = new(Command)
+func NewBase() (c *Base) {
+	c = new(Base)
 	return
 }
