@@ -7,6 +7,7 @@ import (
 	"net"
 	"time"
 
+	log "github.com/Sirupsen/logrus"
 	"github.com/golang/protobuf/proto"
 	"github.com/pkg/errors"
 
@@ -102,12 +103,16 @@ func (c *Client) Close() (err error) {
 
 func NewClient(c *Config) (client *Client, err error) {
 	conn, err := net.DialTCP(c.Proto, c.LocalAddr, c.RemoteAddr)
-	now := time.Now()
-	conn.SetDeadline(now.Add(3 * time.Second))
 	if err != nil {
 		err = errors.Wrap(err, "failed to dial via tcp")
 		return
 	}
+	deadline := time.Now().Add(c.Timeout)
+	conn.SetDeadline(deadline)
+
+	log.WithFields(log.Fields{
+		"deadline": deadline,
+	}).Debug("client settings")
 
 	client = &Client{
 		conn: conn,

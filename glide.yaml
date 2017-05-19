@@ -14,7 +14,7 @@ import:
   - ptypes/timestamp
   - ptypes/wrappers
 - package: gopkg.in/ini.v1
-  version: v1.27.2
+- package: github.com/Sirupsen/logrus
 testImport:
 - package: golang.org/x/sync
   subpackages:
