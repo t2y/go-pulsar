@@ -167,16 +167,15 @@ func (ac *AsyncTcpConn) readLoop() {
 
 func (ac *AsyncTcpConn) Send(msg proto.Message) {
 	ac.sendReceiveMutex.Lock()
-	defer ac.sendReceiveMutex.Unlock()
-
 	ac.wch <- msg
+	ac.sendReceiveMutex.Unlock()
 }
 
 func (ac *AsyncTcpConn) Receive() (frame *command.Frame, err error) {
 	ac.sendReceiveMutex.Lock()
-	defer ac.sendReceiveMutex.Unlock()
-
 	response, ok := <-ac.rch
+	ac.sendReceiveMutex.Unlock()
+
 	if !ok {
 		err = errors.New("read channel has closed")
 		return
