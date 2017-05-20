@@ -19,9 +19,14 @@ const (
 	readChanSize  = 32
 )
 
+type Response struct {
+	Frame *command.Frame
+	Error error
+}
+
 type AsyncTcpConn struct {
 	wch  chan proto.Message
-	rch  chan *command.Frame
+	rch  chan *Response
 	conn *net.TCPConn
 
 	reqMutex sync.Mutex
@@ -144,22 +149,18 @@ func (ac *AsyncTcpConn) readLoop() {
 	for {
 		frame, err := ac.read()
 		if err != nil {
-			log.WithFields(log.Fields{
-				"err": err,
-			}).Error("failed to read in readLoop")
-
 			switch e := errors.Cause(err); e {
 			case io.EOF:
 				return // maybe connection was closed
 			default:
-				continue
+				err = errors.Wrap(err, "failed to read in readLoop")
 			}
 		}
 
 		if ac.rch == nil {
 			return
 		}
-		ac.rch <- frame
+		ac.rch <- &Response{Frame: frame, Error: err}
 	}
 }
 
@@ -167,17 +168,24 @@ func (ac *AsyncTcpConn) Send(msg proto.Message) {
 	ac.wch <- msg
 }
 
-func (ac *AsyncTcpConn) Receive() (frame *command.Frame) {
-	frame, _ = <-ac.rch
+func (ac *AsyncTcpConn) Receive() (frame *command.Frame, err error) {
+	response, ok := <-ac.rch
+	if !ok {
+		err = errors.New("read channel has closed")
+		return
+	}
+
+	frame = response.Frame
+	err = response.Error
 	return
 }
 
-func (ac *AsyncTcpConn) Request(msg proto.Message) (frame *command.Frame) {
+func (ac *AsyncTcpConn) Request(msg proto.Message) (frame *command.Frame, err error) {
 	ac.reqMutex.Lock()
 	defer ac.reqMutex.Unlock()
 
 	ac.Send(msg)
-	frame = ac.Receive()
+	frame, err = ac.Receive()
 	return
 }
 
@@ -200,7 +208,7 @@ func NewAsyncTcpConn(tc *net.TCPConn) (ac *AsyncTcpConn) {
 	ac = &AsyncTcpConn{
 		conn: tc,
 		wch:  make(chan proto.Message, writeChanSize),
-		rch:  make(chan *command.Frame, readChanSize),
+		rch:  make(chan *Response, readChanSize),
 	}
 	ac.Run()
 	return
