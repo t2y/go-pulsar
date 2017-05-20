@@ -18,6 +18,11 @@ func (c *Base) GetRawCommand() (raw *pulsar_proto.BaseCommand) {
 	return
 }
 
+func (c *Base) GetType() (typ *pulsar_proto.BaseCommand_Type) {
+	typ = c.base.Type
+	return
+}
+
 func (c *Base) Marshal() (data []byte, err error) {
 	data, err = proto.Marshal(&c.base)
 	if err != nil {

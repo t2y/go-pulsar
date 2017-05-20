@@ -36,22 +36,19 @@ type Client struct {
 }
 
 func (c *Client) KeepAlive() (err error) {
-	var frame *command.Frame
+	var base *command.Base
 	ping := &pulsar_proto.CommandPing{}
-	frame, err = c.conn.Request(ping)
+	base, err = c.conn.Request(ping)
 	if err != nil {
 		err = errors.Wrap(err, "failed to request ping command")
 		return
 	}
 
-	cmd := command.NewBaseWithType(
-		pulsar_proto.BaseCommand_PONG.Enum(),
-	)
-	_, err = cmd.Unmarshal(frame.Cmddata)
-	if err != nil {
-		err = errors.Wrap(err, "failed to unmarshal pong command")
+	if base.GetRawCommand().GetPong() == nil {
+		err = errors.New("failed to receive pong command")
 		return
 	}
+
 	log.Debug("keepalive")
 	return
 }
@@ -70,24 +67,20 @@ func (c *Client) Connect() (err error) {
 		AuthMethod:      pulsar_proto.AuthMethod_AuthMethodNone.Enum(),
 		ProtocolVersion: proto.Int32(DefaultProtocolVersion),
 	}
-	var frame *command.Frame
-	frame, err = c.conn.Request(connect)
+	var base *command.Base
+	base, err = c.conn.Request(connect)
 	if err != nil {
 		err = errors.Wrap(err, "failed to request connect command")
 		return
 	}
 
-	cmd := command.NewBaseWithType(
-		pulsar_proto.BaseCommand_CONNECTED.Enum(),
-	)
-	msg, err := cmd.Unmarshal(frame.Cmddata)
-	if err != nil {
-		err = errors.Wrap(err, "failed to unmarshal connected  command")
+	connected := base.GetRawCommand().GetConnected()
+	if connected == nil {
+		err = errors.New("failed to receive connected command")
 		return
 	}
 	c.state = ClientStateReady
 
-	connected := msg.(*pulsar_proto.CommandConnected)
 	log.WithFields(log.Fields{
 		"connected": connected,
 	}).Debug("connection is ready")

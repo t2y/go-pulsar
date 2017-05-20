@@ -13,6 +13,7 @@ import (
 	"github.com/pkg/errors"
 
 	command "github.com/t2y/go-pulsar/proto/command"
+	pulsar_proto "github.com/t2y/go-pulsar/proto/pb"
 )
 
 const (
@@ -21,8 +22,8 @@ const (
 )
 
 type Response struct {
-	Frame *command.Frame
-	Error error
+	BaseCommand *command.Base
+	Error       error
 }
 
 type AsyncTcpConn struct {
@@ -146,6 +147,26 @@ func (ac *AsyncTcpConn) read() (frame *command.Frame, err error) {
 	return
 }
 
+func (ac *AsyncTcpConn) handleFrame(frame *command.Frame) (response *Response) {
+	base := command.NewBase()
+	_, err := base.Unmarshal(frame.Cmddata)
+	if err != nil {
+		err = errors.Wrap(err, "failed to unmarshal command")
+		return &Response{Error: err}
+	}
+
+	switch t := base.GetType(); *t {
+	case pulsar_proto.BaseCommand_PING:
+		log.Debug("received ping")
+		ac.wch <- &pulsar_proto.CommandPong{}
+		log.Debug("send pong")
+		return
+	}
+
+	response = &Response{BaseCommand: base}
+	return
+}
+
 func (ac *AsyncTcpConn) readLoop() {
 	for {
 		frame, err := ac.read()
@@ -155,13 +176,21 @@ func (ac *AsyncTcpConn) readLoop() {
 				return // maybe connection was closed
 			default:
 				err = errors.Wrap(err, "failed to read in readLoop")
+				ac.rch <- &Response{BaseCommand: nil, Error: err}
+				continue
 			}
 		}
 
 		if ac.rch == nil {
 			return
 		}
-		ac.rch <- &Response{Frame: frame, Error: err}
+
+		response := ac.handleFrame(frame)
+		if response == nil {
+			continue
+		}
+
+		ac.rch <- response
 	}
 }
 
@@ -173,7 +202,7 @@ func (ac *AsyncTcpConn) Send(msg proto.Message) (err error) {
 	return
 }
 
-func (ac *AsyncTcpConn) Receive() (frame *command.Frame, err error) {
+func (ac *AsyncTcpConn) Receive() (base *command.Base, err error) {
 	ac.sendReceiveMutex.Lock()
 	response, ok := <-ac.rch
 	ac.sendReceiveMutex.Unlock()
@@ -183,12 +212,12 @@ func (ac *AsyncTcpConn) Receive() (frame *command.Frame, err error) {
 		return
 	}
 
-	frame = response.Frame
+	base = response.BaseCommand
 	err = response.Error
 	return
 }
 
-func (ac *AsyncTcpConn) Request(msg proto.Message) (frame *command.Frame, err error) {
+func (ac *AsyncTcpConn) Request(msg proto.Message) (base *command.Base, err error) {
 	ac.reqMutex.Lock()
 	defer ac.reqMutex.Unlock()
 
@@ -198,7 +227,7 @@ func (ac *AsyncTcpConn) Request(msg proto.Message) (frame *command.Frame, err er
 		return
 	}
 
-	frame, err = ac.Receive()
+	base, err = ac.Receive()
 	if err != nil {
 		err = errors.Wrap(err, "failed to receive in request")
 		return
