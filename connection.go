@@ -26,6 +26,7 @@ type Response struct {
 
 type AsyncTcpConn struct {
 	wch  chan proto.Message
+	ech  chan error
 	rch  chan *Response
 	conn *net.TCPConn
 
@@ -51,19 +52,17 @@ func (ac *AsyncTcpConn) writeLoop() {
 
 		data, err := command.NewMarshaledBase(msg)
 		if err != nil {
-			log.WithFields(log.Fields{
-				"err": err,
-			}).Error("failed to marshal message")
+			ac.ech <- errors.Wrap(err, "failed to marshal message")
 			continue
 		}
 
 		_, err = ac.write(data)
 		if err != nil {
-			log.WithFields(log.Fields{
-				"err": err,
-			}).Error("failed to write in writeLoop")
+			ac.ech <- errors.Wrap(err, "failed to write in writeLoop")
 			continue
 		}
+
+		ac.ech <- nil
 	}
 }
 
@@ -165,10 +164,12 @@ func (ac *AsyncTcpConn) readLoop() {
 	}
 }
 
-func (ac *AsyncTcpConn) Send(msg proto.Message) {
+func (ac *AsyncTcpConn) Send(msg proto.Message) (err error) {
 	ac.sendReceiveMutex.Lock()
 	ac.wch <- msg
+	err, _ = <-ac.ech
 	ac.sendReceiveMutex.Unlock()
+	return
 }
 
 func (ac *AsyncTcpConn) Receive() (frame *command.Frame, err error) {
@@ -190,8 +191,18 @@ func (ac *AsyncTcpConn) Request(msg proto.Message) (frame *command.Frame, err er
 	ac.reqMutex.Lock()
 	defer ac.reqMutex.Unlock()
 
-	ac.Send(msg)
+	err = ac.Send(msg)
+	if err != nil {
+		err = errors.Wrap(err, "failed to send in request")
+		return
+	}
+
 	frame, err = ac.Receive()
+	if err != nil {
+		err = errors.Wrap(err, "failed to receive in request")
+		return
+	}
+
 	return
 }
 
@@ -201,6 +212,7 @@ func (ac *AsyncTcpConn) Close() {
 
 	ac.conn.Close()
 	close(ac.wch)
+	close(ac.ech)
 	close(ac.rch)
 	ac.rch = nil
 }
@@ -214,6 +226,7 @@ func NewAsyncTcpConn(tc *net.TCPConn) (ac *AsyncTcpConn) {
 	ac = &AsyncTcpConn{
 		conn: tc,
 		wch:  make(chan proto.Message, writeChanSize),
+		ech:  make(chan error, writeChanSize),
 		rch:  make(chan *Response, readChanSize),
 	}
 	ac.Run()
