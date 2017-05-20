@@ -29,8 +29,9 @@ type AsyncTcpConn struct {
 	rch  chan *Response
 	conn *net.TCPConn
 
-	reqMutex sync.Mutex
-	mutex    sync.Mutex
+	readMutex        sync.Mutex
+	reqMutex         sync.Mutex
+	sendReceiveMutex sync.Mutex
 }
 
 func (ac *AsyncTcpConn) write(data []byte) (total int, err error) {
@@ -84,8 +85,8 @@ func (ac *AsyncTcpConn) read() (frame *command.Frame, err error) {
 	//					[MAGIC_NUMBER][CHECKSUM] [METADATA_SIZE][METADATA]
 	//					[PAYLOAD]
 
-	ac.mutex.Lock()
-	defer ac.mutex.Unlock()
+	ac.readMutex.Lock()
+	defer ac.readMutex.Unlock()
 
 	totalSizeFrame, err := ac.readFrame(int64(command.FrameSizeFieldSize))
 	if err != nil {
@@ -165,10 +166,16 @@ func (ac *AsyncTcpConn) readLoop() {
 }
 
 func (ac *AsyncTcpConn) Send(msg proto.Message) {
+	ac.sendReceiveMutex.Lock()
+	defer ac.sendReceiveMutex.Unlock()
+
 	ac.wch <- msg
 }
 
 func (ac *AsyncTcpConn) Receive() (frame *command.Frame, err error) {
+	ac.sendReceiveMutex.Lock()
+	defer ac.sendReceiveMutex.Unlock()
+
 	response, ok := <-ac.rch
 	if !ok {
 		err = errors.New("read channel has closed")
@@ -190,8 +197,8 @@ func (ac *AsyncTcpConn) Request(msg proto.Message) (frame *command.Frame, err er
 }
 
 func (ac *AsyncTcpConn) Close() {
-	ac.mutex.Lock()
-	defer ac.mutex.Unlock()
+	ac.sendReceiveMutex.Lock()
+	defer ac.sendReceiveMutex.Unlock()
 
 	ac.conn.Close()
 	close(ac.wch)
