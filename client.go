@@ -1,9 +1,6 @@
 package pulsar
 
 import (
-	"bytes"
-	"encoding/binary"
-	"io"
 	"net"
 	"sync"
 	"time"
@@ -18,11 +15,6 @@ import (
 
 const (
 	DefaultDeadlineTimeout = time.Duration(10) * time.Second
-
-	FrameSizeFieldSize        = 4
-	FrameMagicNumberFieldSize = 2
-	FrameChecksumSize         = 2
-	FrameMetadataFieldSize    = 4
 )
 
 const (
@@ -39,132 +31,22 @@ const (
 )
 
 type Client struct {
-	conn  *net.TCPConn
+	conn  *AsyncTcpConn
 	mutex sync.Mutex
 	state ClientState
 }
 
-func (c *Client) Send(data []byte) (total int, err error) {
-	if _, err = io.Copy(c.conn, bytes.NewBuffer(data)); err != nil {
-		err = errors.Wrap(err, "failed to send data")
-		c.Close() // nolint: errcheck
-		return
-	}
-	return
-}
-
-func (c *Client) SendCommand(msg proto.Message) (n int, err error) {
-	data, err := command.NewMarshaledBase(msg)
-	if err != nil {
-		err = errors.Wrap(err, "failed to initialize command")
-		return
-	}
-
-	n, err = c.Send(data)
-	if err != nil {
-		err = errors.Wrap(err, "failed to send command")
-		return
-	}
-
-	return
-}
-
-func (c *Client) Receive() (
-	cmdData []byte, hasPayload bool, metadata []byte, payload []byte, err error,
-) {
-	totalFrame := bytes.NewBuffer(make([]byte, 0, FrameSizeFieldSize))
-	if _, err = io.CopyN(totalFrame, c.conn, FrameSizeFieldSize); err != nil {
-		err = errors.Wrap(err, "failed to receive total frame")
-		return
-	}
-
-	totalSize := binary.BigEndian.Uint32(totalFrame.Bytes())
-	log.Debug(totalSize)
-	cmdSizeAndData := bytes.NewBuffer(make([]byte, 0, totalSize))
-	if _, err = io.CopyN(cmdSizeAndData, c.conn, int64(totalSize)); err != nil {
-		err = errors.Wrap(err, "failed to receive command frame")
-		return
-	}
-
-	frames := cmdSizeAndData.Bytes()
-	cmdDataSize := binary.BigEndian.Uint32(frames[0:FrameSizeFieldSize])
-	log.Debug(cmdDataSize)
-	cmdDataSizePos := FrameSizeFieldSize + cmdDataSize
-	cmdData = frames[FrameSizeFieldSize:cmdDataSizePos]
-
-	if totalSize > cmdDataSize+FrameSizeFieldSize {
-		hasPayload = true
-		magicNumberPos := cmdDataSizePos + FrameMagicNumberFieldSize
-		magicNumber := frames[cmdDataSize:magicNumberPos]
-		log.Debug(magicNumber)
-
-		checksumPos := magicNumberPos + FrameChecksumSize
-		checksum := frames[magicNumberPos:checksumPos]
-		log.Debug(checksum)
-
-		metadataSizePos := checksumPos + FrameMetadataFieldSize
-		metadataSize := binary.BigEndian.Uint32(frames[checksumPos:metadataSizePos])
-		log.Debug(metadataSize)
-
-		metadataPos := metadataSizePos + metadataSize
-		metadata = frames[metadataSizePos:metadataPos]
-		log.Debug(metadata)
-		payload = frames[metadataPos:]
-		log.Debug(payload)
-	}
-
-	return
-}
-
-func (c *Client) ReceiveCommand(
-	typ *pulsar_proto.BaseCommand_Type,
-) (msg proto.Message, err error) {
-	cmdData, hasPayload, metadata, payload, err := c.Receive()
-	if err != nil {
-		err = errors.Wrap(err, "failed to receive command")
-		return
-	}
-
-	cmd, err := command.NewBaseWithType(typ)
-	if err != nil {
-		err = errors.Wrap(err, "failed to create command")
-		return
-	}
-
-	msg, err = cmd.Unmarshal(typ, cmdData)
-	if err != nil {
-		err = errors.Wrap(err, "failed to unmarshal command")
-		return
-	}
-
-	if hasPayload {
-		log.WithFields(log.Fields{
-			"metadata": metadata,
-			"payload":  payload,
-		}).Debug("metadata and payload")
-	}
-
-	return
-}
-
 func (c *Client) KeepAlive() (err error) {
-	c.mutex.Lock()
-	defer c.mutex.Unlock()
-
-	_, err = c.SendCommand(&pulsar_proto.CommandPing{})
-	if err != nil {
-		err = errors.Wrap(err, "failed to send ping command")
-		return
-	}
-
-	_, err = c.ReceiveCommand(
+	ping := &pulsar_proto.CommandPing{}
+	frame := c.conn.Request(ping)
+	cmd := command.NewBaseWithType(
 		pulsar_proto.BaseCommand_PONG.Enum(),
 	)
+	_, err = cmd.Unmarshal(frame.Cmddata)
 	if err != nil {
-		err = errors.Wrap(err, "failed to receive pong command")
+		err = errors.Wrap(err, "failed to request ping command")
 		return
 	}
-
 	log.Debug("keepalive")
 	return
 }
@@ -183,19 +65,14 @@ func (c *Client) Connect() (err error) {
 		AuthMethod:      pulsar_proto.AuthMethod_AuthMethodNone.Enum(),
 		ProtocolVersion: proto.Int32(DefaultProtocolVersion),
 	}
+	frame := c.conn.Request(connect)
 
-	_, err = c.SendCommand(connect)
-	if err != nil {
-		err = errors.Wrap(err, "failed to send connect command")
-		return
-	}
-	log.Debug("sent connect")
-
-	msg, err := c.ReceiveCommand(
+	cmd := command.NewBaseWithType(
 		pulsar_proto.BaseCommand_CONNECTED.Enum(),
 	)
+	msg, err := cmd.Unmarshal(frame.Cmddata)
 	if err != nil {
-		err = errors.Wrap(err, "failed to receive connected command")
+		err = errors.Wrap(err, "failed to request command command")
 		return
 	}
 	c.state = ClientStateReady
@@ -208,11 +85,11 @@ func (c *Client) Connect() (err error) {
 	return
 }
 
-func (c *Client) Close() (err error) {
+func (c *Client) Close() {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
 
-	err = c.conn.Close()
+	c.conn.Close()
 	c.state = ClientStateNone
 	return
 }
@@ -232,7 +109,7 @@ func NewClient(c *Config) (client *Client, err error) {
 	}).Debug("client settings")
 
 	client = &Client{
-		conn:  conn,
+		conn:  NewAsyncTcpConn(conn),
 		state: ClientStateNone,
 	}
 	return

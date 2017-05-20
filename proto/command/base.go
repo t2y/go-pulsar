@@ -1,6 +1,8 @@
 package command
 
 import (
+	"regexp"
+
 	"github.com/golang/protobuf/proto"
 	"github.com/pkg/errors"
 
@@ -24,13 +26,13 @@ func (c *Base) Marshal() (data []byte, err error) {
 	}
 
 	dataLength := len(data)
-	totalFrame, err := CreateSizeFrame(dataLength + 4)
+	totalFrame, err := NewSizeFrame(dataLength + int(FrameSizeFieldSize))
 	if err != nil {
 		err = errors.Wrap(err, "failed to get total frame")
 		return
 	}
 
-	cmdSizeFrame, err := CreateSizeFrame(dataLength)
+	cmdSizeFrame, err := NewSizeFrame(dataLength)
 	if err != nil {
 		err = errors.Wrap(err, "failed to get command frame")
 		return
@@ -39,17 +41,21 @@ func (c *Base) Marshal() (data []byte, err error) {
 	return
 }
 
-func (c *Base) Unmarshal(
-	typ *pulsar_proto.BaseCommand_Type,
-	buf []byte,
-) (msg proto.Message, err error) {
+func (c *Base) Unmarshal(buf []byte) (msg proto.Message, err error) {
 	err = proto.Unmarshal(buf, &c.base)
 	if err != nil {
 		err = errors.Wrap(err, "failed to proto.Unmarshal")
 		return
 	}
 
-	switch t := *typ; t {
+	if c.base.Type == nil {
+		if err = c.SetTypeFromData(); err != nil {
+			err = errors.Wrap(err, "failed to set type from data")
+			return
+		}
+	}
+
+	switch t := *c.base.Type; t {
 	case pulsar_proto.BaseCommand_CONNECT:
 		msg = c.base.Connect
 	case pulsar_proto.BaseCommand_CONNECTED:
@@ -101,7 +107,7 @@ func (c *Base) Unmarshal(
 	case pulsar_proto.BaseCommand_CONSUMER_STATS_RESPONSE:
 		msg = c.base.ConsumerStatsResponse
 	default:
-		err = errors.Errorf("unknown command type: %v", typ)
+		err = errors.Errorf("unknown command type: %v", c.base.Type)
 	}
 
 	return
@@ -164,6 +170,27 @@ func (c *Base) SetType(typ *pulsar_proto.BaseCommand_Type) (err error) {
 		err = errors.Errorf("unknown command type: %v", typ)
 	}
 
+	return
+}
+
+var reCommandType = regexp.MustCompile(`^type:(.+?)\s.*`)
+
+func (c *Base) SetTypeFromData() (err error) {
+	s := c.base.String()
+	group := reCommandType.FindStringSubmatch(s)
+	if group == nil {
+		err = errors.Errorf("failed to find type from data: %s", s)
+		return
+	}
+
+	typeStr := group[1]
+	typValue, ok := pulsar_proto.BaseCommand_Type_value[typeStr]
+	if !ok {
+		err = errors.Errorf("failed to find type value from type string: %s", typeStr)
+		return
+	}
+
+	c.base.Type = pulsar_proto.BaseCommand_Type(typValue).Enum()
 	return
 }
 
@@ -251,32 +278,28 @@ func (c *Base) SetMessage(msg proto.Message) (err error) {
 	return
 }
 
-func NewBaseWithType(typ *pulsar_proto.BaseCommand_Type) (c *Base, err error) {
+func NewBaseWithType(typ *pulsar_proto.BaseCommand_Type) (c *Base) {
 	c = new(Base)
-	err = c.SetType(typ)
+	if err := c.SetType(typ); err != nil {
+		panic(err)
+	}
 	return
 }
 
-func NewBaseWithMessage(msg proto.Message) (c *Base, err error) {
+func NewBaseWithMessage(msg proto.Message) (c *Base) {
 	c = new(Base)
-	err = c.SetMessage(msg)
+	if err := c.SetMessage(msg); err != nil {
+		panic(err)
+	}
 	return
 }
 
 func NewMarshaledBase(msg proto.Message) (data []byte, err error) {
-	var cmd *Base
-	cmd, err = NewBaseWithMessage(msg)
-	if err != nil {
-		err = errors.Wrap(err, "failed to create command")
-		return
-	}
-
-	data, err = cmd.Marshal()
+	data, err = NewBaseWithMessage(msg).Marshal()
 	if err != nil {
 		err = errors.Wrap(err, "failed to marshal command")
 		return
 	}
-
 	return
 }
 
