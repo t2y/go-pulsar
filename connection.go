@@ -6,6 +6,7 @@ import (
 	"io"
 	"net"
 	"sync"
+	"time"
 
 	log "github.com/Sirupsen/logrus"
 	"github.com/golang/protobuf/proto"
@@ -230,5 +231,22 @@ func NewAsyncTcpConn(tc *net.TCPConn) (ac *AsyncTcpConn) {
 		rch:  make(chan *Response, readChanSize),
 	}
 	ac.Run()
+	return
+}
+
+func NewTcpConn(c *Config) (tc *net.TCPConn, err error) {
+	tc, err = net.DialTCP(c.Proto, c.LocalAddr, c.RemoteAddr)
+	if err != nil {
+		err = errors.Wrap(err, "failed to dial via tcp")
+		return
+	}
+	deadline := time.Now().Add(c.Timeout)
+	tc.SetDeadline(deadline)
+
+	log.WithFields(log.Fields{
+		"remoteAddr": c.RemoteAddr,
+		"deadline":   deadline,
+	}).Debug("client settings")
+
 	return
 }

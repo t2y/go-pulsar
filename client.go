@@ -1,7 +1,6 @@
 package pulsar
 
 import (
-	"net"
 	"sync"
 	"time"
 
@@ -105,22 +104,9 @@ func (c *Client) Close() {
 	return
 }
 
-func NewClient(c *Config) (client *Client, err error) {
-	conn, err := net.DialTCP(c.Proto, c.LocalAddr, c.RemoteAddr)
-	if err != nil {
-		err = errors.Wrap(err, "failed to dial via tcp")
-		return
-	}
-	deadline := time.Now().Add(c.Timeout)
-	conn.SetDeadline(deadline)
-
-	log.WithFields(log.Fields{
-		"remoteAddr": c.RemoteAddr,
-		"deadline":   deadline,
-	}).Debug("client settings")
-
+func NewClient(ac *AsyncTcpConn) (client *Client) {
 	client = &Client{
-		conn:  NewAsyncTcpConn(conn),
+		conn:  ac,
 		state: ClientStateNone,
 	}
 	return
