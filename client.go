@@ -35,10 +35,46 @@ type Client struct {
 	state ClientState
 }
 
+func (c *Client) LookupTopic(
+	topic string, requestId uint64, authoritative bool,
+) (err error) {
+	c.mutex.Lock()
+	defer c.mutex.Unlock()
+
+	lookup := &pulsar_proto.CommandLookupTopic{
+		Topic:         proto.String(topic),
+		RequestId:     proto.Uint64(requestId),
+		Authoritative: proto.Bool(authoritative),
+	}
+
+	var base *command.Base
+	base, err = c.conn.Request(&Request{Message: lookup})
+	if err != nil {
+		err = errors.Wrap(err, "failed to send lookupTopic command")
+		return
+	}
+	log.Debug("sent lookupTopic")
+
+	response := base.GetRawCommand().GetLookupTopicResponse()
+	if response == nil {
+		err = errors.Wrap(err, "failed to receive lookupTopicResponse command")
+		return
+	}
+
+	log.WithFields(log.Fields{
+		"response": response,
+	}).Debug("performed lookup topic")
+
+	return
+}
+
 func (c *Client) KeepAlive() (err error) {
+	c.mutex.Lock()
+	defer c.mutex.Unlock()
+
 	var base *command.Base
 	ping := &pulsar_proto.CommandPing{}
-	base, err = c.conn.Request(ping)
+	base, err = c.conn.Request(&Request{Message: ping})
 	if err != nil {
 		err = errors.Wrap(err, "failed to request ping command")
 		return
@@ -68,7 +104,7 @@ func (c *Client) Connect() (err error) {
 		ProtocolVersion: proto.Int32(DefaultProtocolVersion),
 	}
 	var base *command.Base
-	base, err = c.conn.Request(connect)
+	base, err = c.conn.Request(&Request{Message: connect})
 	if err != nil {
 		err = errors.Wrap(err, "failed to request connect command")
 		return
@@ -85,6 +121,21 @@ func (c *Client) Connect() (err error) {
 		"connected": connected,
 	}).Debug("connection is ready")
 
+	return
+}
+func (c *Client) Send(r *Request) (err error) {
+	c.mutex.Lock()
+	defer c.mutex.Unlock()
+
+	err = c.conn.Send(r)
+	return
+}
+
+func (c *Client) Request(r *Request) (base *command.Base, err error) {
+	c.mutex.Lock()
+	defer c.mutex.Unlock()
+
+	base, err = c.conn.Request(r)
 	return
 }
 

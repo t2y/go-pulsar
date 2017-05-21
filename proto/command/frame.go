@@ -1,11 +1,19 @@
 package command
 
 const (
-	FrameSizeFieldSize        uint32 = 4
-	FrameMagicNumberFieldSize uint32 = 2
-	FrameChecksumSize         uint32 = 2
-	FrameMetadataFieldSize    uint32 = 4
+	FrameSizeFieldSize        = 4
+	FrameMagicNumberFieldSize = 2
+	FrameChecksumSize         = 4
+	FrameMetadataFieldSize    = 4
 )
+
+var FrameMagicNumber []byte
+var FrameMagicAndChecksumSize int
+
+func init() {
+	FrameMagicNumber = []byte{0x0e, 0x01}
+	FrameMagicAndChecksumSize = FrameMagicNumberFieldSize + FrameChecksumSize
+}
 
 type Frame struct {
 	Cmddata  []byte

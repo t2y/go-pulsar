@@ -10,11 +10,13 @@ import (
 )
 
 type Base struct {
-	base pulsar_proto.BaseCommand
+	base    *pulsar_proto.BaseCommand
+	meta    *pulsar_proto.MessageMetadata
+	payload string
 }
 
 func (c *Base) GetRawCommand() (raw *pulsar_proto.BaseCommand) {
-	raw = &c.base
+	raw = c.base
 	return
 }
 
@@ -23,31 +25,61 @@ func (c *Base) GetType() (typ *pulsar_proto.BaseCommand_Type) {
 	return
 }
 
+func (c *Base) marshalSimple() (size int, data []byte, err error) {
+	size, data, err = MarshalMessage(c.base)
+	if err != nil {
+		err = errors.Wrap(err, "failed to marshal base command")
+		return
+	}
+	return
+}
+
+func (c *Base) marshalPayload() (size int, data []byte, err error) {
+	cmdSize, cmdData, err := c.marshalSimple()
+	if err != nil {
+		err = errors.Wrap(err, "failed to marshal simple")
+		return
+	}
+
+	metaSize, metaData, err := MarshalMessage(c.meta)
+	if err != nil {
+		err = errors.Wrap(err, "failed to marshal meta message")
+		return
+	}
+
+	payload := []byte(c.payload)
+	payloadSize := len(payload)
+
+	metaAndPayload := append(metaData, payload...)
+	checksum := CalculateChecksum(metaAndPayload)
+
+	size = cmdSize + FrameMagicAndChecksumSize + metaSize + payloadSize
+	data = append(cmdData, FrameMagicNumber...)
+	data = append(data, checksum...)
+	data = append(data, metaAndPayload...)
+	return
+}
+
 func (c *Base) Marshal() (data []byte, err error) {
-	data, err = proto.Marshal(&c.base)
+	var size int
+	if c.meta == nil {
+		size, data, err = c.marshalSimple()
+	} else {
+		size, data, err = c.marshalPayload()
+	}
+
+	totalSizeFrame, err := NewSizeFrame(size)
 	if err != nil {
-		err = errors.Wrap(err, "failed to proto.Marshal")
+		err = errors.Wrap(err, "failed to create total frame")
 		return
 	}
 
-	dataLength := len(data)
-	totalFrame, err := NewSizeFrame(dataLength + int(FrameSizeFieldSize))
-	if err != nil {
-		err = errors.Wrap(err, "failed to get total frame")
-		return
-	}
-
-	cmdSizeFrame, err := NewSizeFrame(dataLength)
-	if err != nil {
-		err = errors.Wrap(err, "failed to get command frame")
-		return
-	}
-	data = append(append(totalFrame, cmdSizeFrame...), data...)
+	data = append(totalSizeFrame, data...)
 	return
 }
 
 func (c *Base) Unmarshal(buf []byte) (msg proto.Message, err error) {
-	err = proto.Unmarshal(buf, &c.base)
+	err = proto.Unmarshal(buf, c.base)
 	if err != nil {
 		err = errors.Wrap(err, "failed to proto.Unmarshal")
 		return
@@ -199,7 +231,7 @@ func (c *Base) SetTypeFromData() (err error) {
 	return
 }
 
-func (c *Base) SetMessage(msg proto.Message) (err error) {
+func (c *Base) SetCommand(msg proto.Message) (err error) {
 	switch t := msg.(type) {
 	case *pulsar_proto.CommandConnect:
 		c.base.Type = pulsar_proto.BaseCommand_CONNECT.Enum()
@@ -283,32 +315,55 @@ func (c *Base) SetMessage(msg proto.Message) (err error) {
 	return
 }
 
+func (c *Base) SetMetadata(
+	meta *pulsar_proto.MessageMetadata,
+	payload string,
+) {
+	c.meta = meta
+	c.payload = payload
+}
+
 func NewBaseWithType(typ *pulsar_proto.BaseCommand_Type) (c *Base) {
-	c = new(Base)
+	c = NewBase()
 	if err := c.SetType(typ); err != nil {
 		panic(err)
 	}
 	return
 }
 
-func NewBaseWithMessage(msg proto.Message) (c *Base) {
-	c = new(Base)
-	if err := c.SetMessage(msg); err != nil {
+func NewBaseWithCommand(
+	msg proto.Message,
+	meta *pulsar_proto.MessageMetadata,
+	payload string,
+) (c *Base) {
+	c = NewBase()
+	if err := c.SetCommand(msg); err != nil {
 		panic(err)
+	}
+	if meta != nil {
+		c.SetMetadata(meta, payload)
 	}
 	return
 }
 
-func NewMarshaledBase(msg proto.Message) (data []byte, err error) {
-	data, err = NewBaseWithMessage(msg).Marshal()
+func NewMarshaledBase(
+	msg proto.Message,
+	meta *pulsar_proto.MessageMetadata,
+	payload string,
+) (data []byte, err error) {
+	cmd := NewBaseWithCommand(msg, meta, payload)
+	data, err = cmd.Marshal()
 	if err != nil {
 		err = errors.Wrap(err, "failed to marshal command")
 		return
 	}
+
 	return
 }
 
 func NewBase() (c *Base) {
-	c = new(Base)
+	c = &Base{
+		base: &pulsar_proto.BaseCommand{},
+	}
 	return
 }

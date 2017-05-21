@@ -21,13 +21,19 @@ const (
 	readChanSize  = 32
 )
 
+type Request struct {
+	Message proto.Message
+	Meta    *pulsar_proto.MessageMetadata
+	Payload string
+}
+
 type Response struct {
 	BaseCommand *command.Base
 	Error       error
 }
 
 type AsyncTcpConn struct {
-	wch  chan proto.Message
+	wch  chan *Request
 	ech  chan error
 	rch  chan *Response
 	conn *net.TCPConn
@@ -47,12 +53,12 @@ func (ac *AsyncTcpConn) write(data []byte) (total int, err error) {
 
 func (ac *AsyncTcpConn) writeLoop() {
 	for {
-		msg, ok := <-ac.wch
+		r, ok := <-ac.wch
 		if !ok {
 			return
 		}
 
-		data, err := command.NewMarshaledBase(msg)
+		data, err := command.NewMarshaledBase(r.Message, r.Meta, r.Payload)
 		if err != nil {
 			ac.ech <- errors.Wrap(err, "failed to marshal message")
 			continue
@@ -137,7 +143,7 @@ func (ac *AsyncTcpConn) read() (frame *command.Frame, err error) {
 		metadataSize := binary.BigEndian.Uint32(otherFrames[checksumPos:metadataSizePos])
 		log.Debug(metadataSize)
 
-		metadataPos := metadataSizePos + metadataSize
+		metadataPos := metadataSizePos + int(metadataSize)
 		frame.Metadata = otherFrames[metadataSizePos:metadataPos]
 		log.Debug(frame.Metadata)
 		frame.Payload = otherFrames[metadataPos:]
@@ -158,7 +164,7 @@ func (ac *AsyncTcpConn) handleFrame(frame *command.Frame) (response *Response) {
 	switch t := base.GetType(); *t {
 	case pulsar_proto.BaseCommand_PING:
 		log.Debug("received ping")
-		ac.wch <- &pulsar_proto.CommandPong{}
+		ac.wch <- &Request{Message: &pulsar_proto.CommandPong{}}
 		log.Debug("send pong")
 		return
 	}
@@ -194,9 +200,9 @@ func (ac *AsyncTcpConn) readLoop() {
 	}
 }
 
-func (ac *AsyncTcpConn) Send(msg proto.Message) (err error) {
+func (ac *AsyncTcpConn) Send(r *Request) (err error) {
 	ac.sendReceiveMutex.Lock()
-	ac.wch <- msg
+	ac.wch <- r
 	err, _ = <-ac.ech
 	ac.sendReceiveMutex.Unlock()
 	return
@@ -217,11 +223,11 @@ func (ac *AsyncTcpConn) Receive() (base *command.Base, err error) {
 	return
 }
 
-func (ac *AsyncTcpConn) Request(msg proto.Message) (base *command.Base, err error) {
+func (ac *AsyncTcpConn) Request(r *Request) (base *command.Base, err error) {
 	ac.reqMutex.Lock()
 	defer ac.reqMutex.Unlock()
 
-	err = ac.Send(msg)
+	err = ac.Send(r)
 	if err != nil {
 		err = errors.Wrap(err, "failed to send in request")
 		return
@@ -255,7 +261,7 @@ func (ac *AsyncTcpConn) Run() {
 func NewAsyncTcpConn(tc *net.TCPConn) (ac *AsyncTcpConn) {
 	ac = &AsyncTcpConn{
 		conn: tc,
-		wch:  make(chan proto.Message, writeChanSize),
+		wch:  make(chan *Request, writeChanSize),
 		ech:  make(chan error, writeChanSize),
 		rch:  make(chan *Response, readChanSize),
 	}
