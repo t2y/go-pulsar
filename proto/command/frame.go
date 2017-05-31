@@ -1,5 +1,10 @@
 package command
 
+import (
+	"encoding/hex"
+	"fmt"
+)
+
 const (
 	FrameSizeFieldSize        = 4
 	FrameMagicNumberFieldSize = 2
@@ -17,12 +22,19 @@ func init() {
 
 type Frame struct {
 	Cmddata  []byte
-	Checksum []byte
 	Metadata []byte
 	Payload  []byte
 }
 
 func (f *Frame) HasPayload() (r bool) {
 	r = len(f.Metadata) > 0 || len(f.Payload) > 0
+	return
+}
+
+func (f *Frame) String() (s string) {
+	s = fmt.Sprintf(
+		"\ncmd data:\n%smeta data:\n%s:\npayload:\n%s",
+		hex.Dump(f.Cmddata), hex.Dump(f.Metadata), hex.Dump(f.Payload),
+	)
 	return
 }

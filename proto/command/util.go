@@ -42,6 +42,27 @@ func MarshalMessage(msg proto.Message) (
 	return
 }
 
+func HasChecksum(frame []byte) (r bool) {
+	nextBytes := frame[0:FrameMagicNumberFieldSize]
+	r = bytes.Equal(nextBytes, FrameMagicNumber)
+	return
+}
+
+func VerifyChecksum(data []byte) (msgAndPayload []byte, err error) {
+	pos := FrameMagicNumberFieldSize + FrameChecksumSize
+	checksum := data[FrameMagicNumberFieldSize:pos]
+	msgAndPayload = data[pos:]
+
+	calcChecksum := CalculateChecksum(msgAndPayload)
+	if !bytes.Equal(checksum, calcChecksum) {
+		s := "unmatch checksum: received: %s, calculate %s"
+		err = errors.Errorf(s, checksum, calcChecksum)
+		return
+	}
+
+	return
+}
+
 var crc32cTable = crc32.MakeTable(crc32.Castagnoli)
 
 func CalculateChecksum(data []byte) (checksum []byte) {

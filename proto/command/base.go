@@ -81,7 +81,7 @@ func (c *Base) Marshal() (data []byte, err error) {
 func (c *Base) Unmarshal(buf []byte) (msg proto.Message, err error) {
 	err = proto.Unmarshal(buf, c.base)
 	if err != nil {
-		err = errors.Wrap(err, "failed to proto.Unmarshal")
+		err = errors.Wrap(err, "failed to proto.Unmarshal base command")
 		return
 	}
 
@@ -147,6 +147,22 @@ func (c *Base) Unmarshal(buf []byte) (msg proto.Message, err error) {
 		err = errors.Errorf("unknown command type: %v", c.base.Type)
 	}
 
+	return
+}
+
+func (c *Base) UnmarshalMeta(
+	metaBytes []byte, payloadBytes []byte,
+) (meta *pulsar_proto.MessageMetadata, payload string, err error) {
+	c.meta = new(pulsar_proto.MessageMetadata)
+	err = proto.Unmarshal(metaBytes, c.meta)
+	if err != nil {
+		err = errors.Wrap(err, "failed to proto.Unmarshal meta data")
+		return
+	}
+	c.payload = string(payloadBytes[:])
+
+	meta = c.meta
+	payload = c.payload
 	return
 }
 

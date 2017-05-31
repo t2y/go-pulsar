@@ -7,7 +7,6 @@ import (
 	"github.com/golang/protobuf/proto"
 	"github.com/pkg/errors"
 
-	command "github.com/t2y/go-pulsar/proto/command"
 	pulsar_proto "github.com/t2y/go-pulsar/proto/pb"
 )
 
@@ -30,13 +29,14 @@ func (p *Producer) CreateProcuder(
 		RequestId:  proto.Uint64(requestId),
 	}
 
-	var base *command.Base
-	base, err = p.client.Request(&Request{Message: producer})
+	var res *Response
+	res, err = p.client.Request(&Request{Message: producer})
 	if err != nil {
 		err = errors.Wrap(err, "failed to send producer command")
 		return
 	}
 
+	base := res.BaseCommand
 	switch t := base.GetType(); *t {
 	case pulsar_proto.BaseCommand_PRODUCER_SUCCESS:
 		success = base.GetRawCommand().GetProducerSuccess()
@@ -82,13 +82,13 @@ func (p *Producer) Send(
 		}
 		log.Debug("performed send")
 	} else {
-		var base *command.Base
-		base, err = p.client.Request(request)
+		var res *Response
+		res, err = p.client.Request(request)
 		if err != nil {
 			err = errors.Wrap(err, "failed to request 'send'command")
 			return
 		}
-		receipt := base.GetRawCommand().GetSendReceipt()
+		receipt := res.BaseCommand.GetRawCommand().GetSendReceipt()
 		log.WithFields(log.Fields{
 			"receipt": receipt,
 		}).Debug("sending messages have been persisted")
@@ -105,14 +105,14 @@ func (p *Producer) CloseProducer(
 		RequestId:  proto.Uint64(requestId),
 	}
 
-	var base *command.Base
-	base, err = p.client.Request(&Request{Message: close})
+	var res *Response
+	res, err = p.client.Request(&Request{Message: close})
 	if err != nil {
 		err = errors.Wrap(err, "failed to request closeProducer command")
 		return
 	}
 
-	success = base.GetRawCommand().GetSuccess()
+	success = res.BaseCommand.GetRawCommand().GetSuccess()
 	log.WithFields(log.Fields{
 		"producerId": producerId,
 		"requestId":  requestId,

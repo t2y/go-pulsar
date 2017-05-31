@@ -29,18 +29,20 @@ type Request struct {
 
 type Response struct {
 	BaseCommand *command.Base
+	Meta        *pulsar_proto.MessageMetadata
+	Payload     string
 	Error       error
 }
 
 type AsyncTcpConn struct {
-	wch  chan *Request
-	ech  chan error
-	rch  chan *Response
-	conn *net.TCPConn
+	wch     chan *Request
+	ech     chan error
+	rch     chan *Response
+	timeout time.Duration
 
-	readMutex        sync.Mutex
-	reqMutex         sync.Mutex
-	sendReceiveMutex sync.Mutex
+	readMutex sync.Mutex
+	reqMutex  sync.Mutex
+	conn      *net.TCPConn
 }
 
 func (ac *AsyncTcpConn) write(data []byte) (total int, err error) {
@@ -80,17 +82,26 @@ func (ac *AsyncTcpConn) readFrame(size int64) (frame *bytes.Buffer, err error) {
 		err = errors.Wrap(err, "failed to read frame")
 		return
 	}
+
 	return
 }
 
 func (ac *AsyncTcpConn) read() (frame *command.Frame, err error) {
 	// there are 2 framing formats.
 	//
-	// 1. simple: [TOTAL_SIZE] [CMD_SIZE] [CMD]
+	// 1. simple:
 	//
-	// 2. with payload: [TOTAL_SIZE] [CMD_SIZE][CMD]
-	//					[MAGIC_NUMBER][CHECKSUM] [METADATA_SIZE][METADATA]
-	//					[PAYLOAD]
+	//	  [TOTAL_SIZE] [CMD_SIZE] [CMD]
+	//
+	// 2. payload:
+	//
+	//    [TOTAL_SIZE] [CMD_SIZE][CMD] [MAGIC_NUMBER][CHECKSUM]
+	//	  [METADATA_SIZE][METADATA] [PAYLOAD]
+	//
+	// note: it may receive without checksum for backward compatibility
+	// https://github.com/yahoo/pulsar/issues/428
+	//
+	//	  [TOTAL_SIZE] [CMD_SIZE][CMD] [METADATA_SIZE][METADATA] [PAYLOAD]
 
 	ac.readMutex.Lock()
 	defer ac.readMutex.Unlock()
@@ -100,9 +111,7 @@ func (ac *AsyncTcpConn) read() (frame *command.Frame, err error) {
 		err = errors.Wrap(err, "failed to read total size frame")
 		return
 	}
-
 	totalSize := binary.BigEndian.Uint32(totalSizeFrame.Bytes())
-	log.Debug(totalSize)
 
 	cmdSizeFrame, err := ac.readFrame(int64(command.FrameSizeFieldSize))
 	if err != nil {
@@ -111,7 +120,6 @@ func (ac *AsyncTcpConn) read() (frame *command.Frame, err error) {
 	}
 
 	cmdSize := binary.BigEndian.Uint32(cmdSizeFrame.Bytes())
-	log.Debug(cmdSize)
 
 	cmdFrame, err := ac.readFrame(int64(cmdSize))
 	if err != nil {
@@ -124,30 +132,27 @@ func (ac *AsyncTcpConn) read() (frame *command.Frame, err error) {
 
 	otherFramesSize := totalSize - (cmdSize + command.FrameSizeFieldSize)
 	if otherFramesSize > 0 {
-		var _otherFrames *bytes.Buffer
-		_otherFrames, err = ac.readFrame(int64(otherFramesSize))
+		var otherFrames *bytes.Buffer
+		otherFrames, err = ac.readFrame(int64(otherFramesSize))
 		if err != nil {
 			err = errors.Wrap(err, "failed to read other frames")
 			return
 		}
-		otherFrames := _otherFrames.Bytes()
+		msgAndPayload := otherFrames.Bytes()
 
-		magicNumber := otherFrames[0:command.FrameMagicNumberFieldSize]
-		log.Debug(magicNumber)
+		if command.HasChecksum(msgAndPayload) {
+			msgAndPayload, err = command.VerifyChecksum(msgAndPayload)
+			if err != nil {
+				err = errors.Wrap(err, "failed to verify checksum")
+				return
+			}
+		}
 
-		checksumPos := command.FrameMagicNumberFieldSize + command.FrameChecksumSize
-		frame.Checksum = otherFrames[command.FrameMagicNumberFieldSize:checksumPos]
-		log.Debug(frame.Checksum)
-
-		metadataSizePos := checksumPos + command.FrameMetadataFieldSize
-		metadataSize := binary.BigEndian.Uint32(otherFrames[checksumPos:metadataSizePos])
-		log.Debug(metadataSize)
-
+		metadataSizePos := command.FrameMetadataFieldSize
+		metadataSize := binary.BigEndian.Uint32(msgAndPayload[0:metadataSizePos])
 		metadataPos := metadataSizePos + int(metadataSize)
-		frame.Metadata = otherFrames[metadataSizePos:metadataPos]
-		log.Debug(frame.Metadata)
-		frame.Payload = otherFrames[metadataPos:]
-		log.Debug(frame.Payload)
+		frame.Metadata = msgAndPayload[metadataSizePos:metadataPos]
+		frame.Payload = msgAndPayload[metadataPos:]
 	}
 
 	return
@@ -155,21 +160,31 @@ func (ac *AsyncTcpConn) read() (frame *command.Frame, err error) {
 
 func (ac *AsyncTcpConn) handleFrame(frame *command.Frame) (response *Response) {
 	base := command.NewBase()
-	_, err := base.Unmarshal(frame.Cmddata)
-	if err != nil {
-		err = errors.Wrap(err, "failed to unmarshal command")
+	if _, err := base.Unmarshal(frame.Cmddata); err != nil {
+		err = errors.Wrap(err, "failed to unmarshal base")
 		return &Response{Error: err}
 	}
 
 	switch t := base.GetType(); *t {
 	case pulsar_proto.BaseCommand_PING:
 		log.Debug("received ping")
+		ac.conn.SetDeadline(time.Now().Add(ac.timeout))
 		ac.wch <- &Request{Message: &pulsar_proto.CommandPong{}}
 		log.Debug("send pong")
 		return
 	}
 
 	response = &Response{BaseCommand: base}
+	if frame.HasPayload() {
+		meta, payload, err := base.UnmarshalMeta(frame.Metadata, frame.Payload)
+		if err != nil {
+			err = errors.Wrap(err, "failed to unmarshal meta")
+			return &Response{Error: err}
+		}
+
+		response.Meta = meta
+		response.Payload = payload
+	}
 	return
 }
 
@@ -181,6 +196,10 @@ func (ac *AsyncTcpConn) readLoop() {
 			case io.EOF:
 				return // maybe connection was closed
 			default:
+				if ne, ok := e.(net.Error); ok && ne.Timeout() {
+					return // closed connection due to timeout
+				}
+
 				err = errors.Wrap(err, "failed to read in readLoop")
 				ac.rch <- &Response{BaseCommand: nil, Error: err}
 				continue
@@ -201,39 +220,43 @@ func (ac *AsyncTcpConn) readLoop() {
 }
 
 func (ac *AsyncTcpConn) Send(r *Request) (err error) {
-	ac.sendReceiveMutex.Lock()
 	ac.wch <- r
 	err, _ = <-ac.ech
-	ac.sendReceiveMutex.Unlock()
 	return
 }
 
-func (ac *AsyncTcpConn) Receive() (base *command.Base, err error) {
-	ac.sendReceiveMutex.Lock()
+func (ac *AsyncTcpConn) Receive() (response *Response, err error) {
+	ac.reqMutex.Lock()
 	response, ok := <-ac.rch
-	ac.sendReceiveMutex.Unlock()
+	defer ac.reqMutex.Unlock()
 
 	if !ok {
 		err = errors.New("read channel has closed")
 		return
 	}
 
-	base = response.BaseCommand
 	err = response.Error
+	if err == nil {
+		log.WithFields(log.Fields{
+			"base":    response.BaseCommand.GetRawCommand(),
+			"meta":    response.Meta,
+			"payload": response.Payload,
+			"error":   response.Error,
+		}).Debug("receive in AsyncTcpConn")
+	}
 	return
 }
 
-func (ac *AsyncTcpConn) Request(r *Request) (base *command.Base, err error) {
+func (ac *AsyncTcpConn) Request(r *Request) (response *Response, err error) {
 	ac.reqMutex.Lock()
-	defer ac.reqMutex.Unlock()
-
 	err = ac.Send(r)
 	if err != nil {
 		err = errors.Wrap(err, "failed to send in request")
 		return
 	}
 
-	base, err = ac.Receive()
+	ac.reqMutex.Unlock()
+	response, err = ac.Receive()
 	if err != nil {
 		err = errors.Wrap(err, "failed to receive in request")
 		return
@@ -243,8 +266,8 @@ func (ac *AsyncTcpConn) Request(r *Request) (base *command.Base, err error) {
 }
 
 func (ac *AsyncTcpConn) Close() {
-	ac.sendReceiveMutex.Lock()
-	defer ac.sendReceiveMutex.Unlock()
+	ac.reqMutex.Lock()
+	defer ac.reqMutex.Unlock()
 
 	ac.conn.Close()
 	close(ac.wch)
@@ -258,12 +281,14 @@ func (ac *AsyncTcpConn) Run() {
 	go ac.readLoop()
 }
 
-func NewAsyncTcpConn(tc *net.TCPConn) (ac *AsyncTcpConn) {
+func NewAsyncTcpConn(c *Config, tc *net.TCPConn) (ac *AsyncTcpConn) {
 	ac = &AsyncTcpConn{
 		conn: tc,
 		wch:  make(chan *Request, writeChanSize),
 		ech:  make(chan error, writeChanSize),
 		rch:  make(chan *Response, readChanSize),
+
+		timeout: c.Timeout,
 	}
 	ac.Run()
 	return

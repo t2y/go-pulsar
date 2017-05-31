@@ -8,12 +8,11 @@ import (
 	"github.com/golang/protobuf/proto"
 	"github.com/pkg/errors"
 
-	command "github.com/t2y/go-pulsar/proto/command"
 	pulsar_proto "github.com/t2y/go-pulsar/proto/pb"
 )
 
 const (
-	DefaultDeadlineTimeout = time.Duration(10) * time.Second
+	DefaultDeadlineTimeout = time.Duration(40) * time.Second
 )
 
 const (
@@ -47,15 +46,15 @@ func (c *Client) LookupTopic(
 		Authoritative: proto.Bool(authoritative),
 	}
 
-	var base *command.Base
-	base, err = c.conn.Request(&Request{Message: lookup})
+	var res *Response
+	res, err = c.conn.Request(&Request{Message: lookup})
 	if err != nil {
 		err = errors.Wrap(err, "failed to send lookupTopic command")
 		return
 	}
 	log.Debug("sent lookupTopic")
 
-	response := base.GetRawCommand().GetLookupTopicResponse()
+	response := res.BaseCommand.GetRawCommand().GetLookupTopicResponse()
 	if response == nil {
 		err = errors.Wrap(err, "failed to receive lookupTopicResponse command")
 		return
@@ -72,15 +71,15 @@ func (c *Client) KeepAlive() (err error) {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
 
-	var base *command.Base
+	var res *Response
 	ping := &pulsar_proto.CommandPing{}
-	base, err = c.conn.Request(&Request{Message: ping})
+	res, err = c.conn.Request(&Request{Message: ping})
 	if err != nil {
 		err = errors.Wrap(err, "failed to request ping command")
 		return
 	}
 
-	if base.GetRawCommand().GetPong() == nil {
+	if res.BaseCommand.GetRawCommand().GetPong() == nil {
 		err = errors.New("failed to receive pong command")
 		return
 	}
@@ -103,14 +102,14 @@ func (c *Client) Connect() (err error) {
 		AuthMethod:      pulsar_proto.AuthMethod_AuthMethodNone.Enum(),
 		ProtocolVersion: proto.Int32(DefaultProtocolVersion),
 	}
-	var base *command.Base
-	base, err = c.conn.Request(&Request{Message: connect})
+	var res *Response
+	res, err = c.conn.Request(&Request{Message: connect})
 	if err != nil {
 		err = errors.Wrap(err, "failed to request connect command")
 		return
 	}
 
-	connected := base.GetRawCommand().GetConnected()
+	connected := res.BaseCommand.GetRawCommand().GetConnected()
 	if connected == nil {
 		err = errors.New("failed to receive connected command")
 		return
@@ -131,11 +130,19 @@ func (c *Client) Send(r *Request) (err error) {
 	return
 }
 
-func (c *Client) Request(r *Request) (base *command.Base, err error) {
+func (c *Client) Receive() (res *Response, err error) {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
 
-	base, err = c.conn.Request(r)
+	res, err = c.conn.Receive()
+	return
+}
+
+func (c *Client) Request(r *Request) (res *Response, err error) {
+	c.mutex.Lock()
+	defer c.mutex.Unlock()
+
+	res, err = c.conn.Request(r)
 	return
 }
 
