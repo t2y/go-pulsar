@@ -58,20 +58,6 @@ func (c *Consumer) Flow(
 	return
 }
 
-func (c *Consumer) ReceiveSuccess() (err error) {
-	res, err := c.client.Receive()
-	if err != nil {
-		err = errors.Wrap(err, "failed to receive succcess command")
-		return
-	}
-
-	success := res.BaseCommand.GetRawCommand().GetSuccess()
-	log.WithFields(log.Fields{
-		"success": success,
-	}).Debug("receive success")
-	return
-}
-
 func (c *Consumer) ReceiveMessage() (msg *command.Message, err error) {
 	res, err := c.client.Receive()
 	if err != nil {

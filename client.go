@@ -122,6 +122,21 @@ func (c *Client) Connect() (err error) {
 
 	return
 }
+
+func (c *Client) ReceiveSuccess() (success *pulsar_proto.CommandSuccess, err error) {
+	res, err := c.Receive()
+	if err != nil {
+		err = errors.Wrap(err, "failed to receive succcess command")
+		return
+	}
+
+	success = res.BaseCommand.GetRawCommand().GetSuccess()
+	log.WithFields(log.Fields{
+		"success": success,
+	}).Debug("receive success")
+	return
+}
+
 func (c *Client) Send(r *Request) (err error) {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
@@ -135,14 +150,6 @@ func (c *Client) Receive() (res *Response, err error) {
 	defer c.mutex.Unlock()
 
 	res, err = c.conn.Receive()
-	return
-}
-
-func (c *Client) Request(r *Request) (res *Response, err error) {
-	c.mutex.Lock()
-	defer c.mutex.Unlock()
-
-	res, err = c.conn.Request(r)
 	return
 }
 
