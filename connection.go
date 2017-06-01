@@ -52,6 +52,15 @@ type Response struct {
 	Error       error
 }
 
+type Conn interface {
+	GetID() string
+	Connect(*pulsar_proto.CommandConnect) error
+	Send(*Request) error
+	Receive() (*Response, error)
+	Request(*Request) (*Response, error)
+	Close()
+}
+
 type AsyncTcpConn struct {
 	id      string
 	wch     chan *Request

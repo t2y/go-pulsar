@@ -10,14 +10,25 @@ import (
 	pulsar_proto "github.com/t2y/go-pulsar/proto/pb"
 )
 
-type Producer struct {
-	client *Client
+type Producer interface {
+	CreateProcuder(topic string, producerId, requestId uint64) error
+	ReceiveProducerSuccess() (*pulsar_proto.CommandProducerSuccess, error)
+	SendSend(producerId, sequenceId uint64, numMessages int32,
+		producerName string, payload string, isAsync bool) error
+	ReceiveSendReceipt() (*pulsar_proto.CommandSendReceipt, error)
+	CloseProducer(
+		producerId, requestId uint64) (*pulsar_proto.CommandSuccess, error)
 }
 
-func (p *Producer) CreateProcuder(
+type ProducerClient struct {
+	Client
+	Producer
+}
+
+func (p *ProducerClient) CreateProcuder(
 	topic string, producerId, requestId uint64,
 ) (err error) {
-	if err = p.client.LookupTopic(topic, requestId, false); err != nil {
+	if err = p.LookupTopic(topic, requestId, false); err != nil {
 		err = errors.Wrap(err, "failed to request lookup command")
 		return
 	}
@@ -28,7 +39,7 @@ func (p *Producer) CreateProcuder(
 		RequestId:  proto.Uint64(requestId),
 	}
 
-	if err = p.client.Send(&Request{Message: producer}); err != nil {
+	if err = p.Send(&Request{Message: producer}); err != nil {
 		err = errors.Wrap(err, "failed to send producer command")
 		return
 	}
@@ -37,10 +48,10 @@ func (p *Producer) CreateProcuder(
 	return
 }
 
-func (p *Producer) ReceiveProducerSuccess() (
+func (p *ProducerClient) ReceiveProducerSuccess() (
 	success *pulsar_proto.CommandProducerSuccess, err error,
 ) {
-	res, err := p.client.Receive()
+	res, err := p.Receive()
 	if err != nil {
 		err = errors.Wrap(err, "failed to receive producerSuccess command")
 		return
@@ -64,7 +75,7 @@ func (p *Producer) ReceiveProducerSuccess() (
 	return
 }
 
-func (p *Producer) Send(
+func (p *ProducerClient) SendSend(
 	producerId, sequenceId uint64, numMessages int32,
 	producerName string, payload string, isAsync bool,
 ) (err error) {
@@ -83,7 +94,7 @@ func (p *Producer) Send(
 	}
 
 	request := &Request{Message: send, Meta: meta, Payload: payload}
-	if err = p.client.Send(request); err != nil {
+	if err = p.Send(request); err != nil {
 		err = errors.Wrap(err, "failed to send 'send' command")
 		return
 	}
@@ -92,10 +103,10 @@ func (p *Producer) Send(
 	return
 }
 
-func (p *Producer) ReceiveSendReceipt() (
+func (p *ProducerClient) ReceiveSendReceipt() (
 	receipt *pulsar_proto.CommandSendReceipt, err error,
 ) {
-	res, err := p.client.Receive()
+	res, err := p.Receive()
 	if err != nil {
 		err = errors.Wrap(err, "failed to receive sendReceipt command")
 		return
@@ -108,7 +119,7 @@ func (p *Producer) ReceiveSendReceipt() (
 	return
 }
 
-func (p *Producer) CloseProducer(
+func (p *ProducerClient) CloseProducer(
 	producerId, requestId uint64,
 ) (success *pulsar_proto.CommandSuccess, err error) {
 	close := &pulsar_proto.CommandCloseProducer{
@@ -116,7 +127,7 @@ func (p *Producer) CloseProducer(
 		RequestId:  proto.Uint64(requestId),
 	}
 
-	if err = p.client.Send(&Request{Message: close}); err != nil {
+	if err = p.Send(&Request{Message: close}); err != nil {
 		err = errors.Wrap(err, "failed to send closeProducer command")
 		return
 	}
@@ -125,10 +136,7 @@ func (p *Producer) CloseProducer(
 	return
 }
 
-func NewProducer(client *Client) (p *Producer) {
-	client.Connect() // nolint: errcheck
-	p = &Producer{
-		client: client,
-	}
+func NewProducer(client *PulsarClient) (p *ProducerClient) {
+	p = &ProducerClient{client, nil}
 	return
 }

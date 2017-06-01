@@ -9,14 +9,26 @@ import (
 	pulsar_proto "github.com/t2y/go-pulsar/proto/pb"
 )
 
-type Consumer struct {
-	client *Client
+type Consumer interface {
+	Subscribe(topic, subscription, subType string,
+		consumerId, requestId uint64) error
+	Flow(consumerId uint64, messagePermits uint32) error
+	ReceiveMessage() (*command.Message, error)
+	SendAck(consumerId uint64, ackType pulsar_proto.CommandAck_AckType,
+		msgIdData *pulsar_proto.MessageIdData,
+		validationError *pulsar_proto.CommandAck_ValidationError) error
+	CloseConsumer(consumerId, requestId uint64) error
 }
 
-func (c *Consumer) Subscribe(
+type ConsumerClient struct {
+	Client
+	Consumer
+}
+
+func (c *ConsumerClient) Subscribe(
 	topic, subscription, subType string, consumerId, requestId uint64,
 ) (err error) {
-	err = c.client.LookupTopic(topic, requestId, false)
+	err = c.LookupTopic(topic, requestId, false)
 	if err != nil {
 		err = errors.Wrap(err, "failed to request lookup command")
 		return
@@ -30,7 +42,7 @@ func (c *Consumer) Subscribe(
 		RequestId:    proto.Uint64(requestId),
 	}
 
-	err = c.client.Send(&Request{Message: sub})
+	err = c.Send(&Request{Message: sub})
 	if err != nil {
 		err = errors.Wrap(err, "failed to send subscribe command")
 		return
@@ -40,7 +52,7 @@ func (c *Consumer) Subscribe(
 	return
 }
 
-func (c *Consumer) Flow(
+func (c *ConsumerClient) Flow(
 	consumerId uint64, messagePermits uint32,
 ) (err error) {
 	flow := &pulsar_proto.CommandFlow{
@@ -48,7 +60,7 @@ func (c *Consumer) Flow(
 		MessagePermits: proto.Uint32(messagePermits),
 	}
 
-	err = c.client.Send(&Request{Message: flow})
+	err = c.Send(&Request{Message: flow})
 	if err != nil {
 		err = errors.Wrap(err, "failed to request flow command")
 		return
@@ -58,8 +70,8 @@ func (c *Consumer) Flow(
 	return
 }
 
-func (c *Consumer) ReceiveMessage() (msg *command.Message, err error) {
-	res, err := c.client.Receive()
+func (c *ConsumerClient) ReceiveMessage() (msg *command.Message, err error) {
+	res, err := c.Receive()
 	if err != nil {
 		err = errors.Wrap(err, "failed to receive message command")
 		return
@@ -75,7 +87,7 @@ func (c *Consumer) ReceiveMessage() (msg *command.Message, err error) {
 	return
 }
 
-func (c *Consumer) SendAck(
+func (c *ConsumerClient) SendAck(
 	consumerId uint64, ackType pulsar_proto.CommandAck_AckType,
 	msgIdData *pulsar_proto.MessageIdData,
 	validationError *pulsar_proto.CommandAck_ValidationError,
@@ -87,7 +99,7 @@ func (c *Consumer) SendAck(
 		ValidationError: validationError,
 	}
 
-	err = c.client.Send(&Request{Message: ack})
+	err = c.Send(&Request{Message: ack})
 	if err != nil {
 		err = errors.Wrap(err, "failed to send ack command")
 		return
@@ -97,7 +109,7 @@ func (c *Consumer) SendAck(
 	return
 }
 
-func (c *Consumer) CloseConsumer(
+func (c *ConsumerClient) CloseConsumer(
 	consumerId, requestId uint64,
 ) (err error) {
 	close := &pulsar_proto.CommandCloseConsumer{
@@ -105,7 +117,7 @@ func (c *Consumer) CloseConsumer(
 		RequestId:  proto.Uint64(requestId),
 	}
 
-	err = c.client.Send(&Request{Message: close})
+	err = c.Send(&Request{Message: close})
 	if err != nil {
 		err = errors.Wrap(err, "failed to send closeConsumer command")
 		return
@@ -115,10 +127,7 @@ func (c *Consumer) CloseConsumer(
 	return
 }
 
-func NewConsumer(client *Client) (c *Consumer) {
-	client.Connect() // nolint: errcheck
-	c = &Consumer{
-		client: client,
-	}
+func NewConsumer(client *PulsarClient) (c *ConsumerClient) {
+	c = &ConsumerClient{client, nil}
 	return
 }

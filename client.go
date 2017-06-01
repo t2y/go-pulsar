@@ -19,11 +19,18 @@ const (
 	DefaultProtocolVersion = 7
 )
 
-type Client struct {
-	conn *AsyncTcpConn
+type Client interface {
+	Conn
+	KeepAlive() error
+	LookupTopic(topic string, requestId uint64, authoritative bool) error
+	ReceiveSuccess() (*pulsar_proto.CommandSuccess, error)
 }
 
-func (c *Client) LookupTopic(
+type PulsarClient struct {
+	Conn
+}
+
+func (c *PulsarClient) LookupTopic(
 	topic string, requestId uint64, authoritative bool,
 ) (err error) {
 
@@ -34,7 +41,7 @@ func (c *Client) LookupTopic(
 	}
 
 	var res *Response
-	res, err = c.conn.Request(&Request{Message: lookup})
+	res, err = c.Request(&Request{Message: lookup})
 	if err != nil {
 		err = errors.Wrap(err, "failed to send lookupTopic command")
 		return
@@ -54,10 +61,10 @@ func (c *Client) LookupTopic(
 	return
 }
 
-func (c *Client) KeepAlive() (err error) {
+func (c *PulsarClient) KeepAlive() (err error) {
 	var res *Response
 	ping := &pulsar_proto.CommandPing{}
-	res, err = c.conn.Request(&Request{Message: ping})
+	res, err = c.Request(&Request{Message: ping})
 	if err != nil {
 		err = errors.Wrap(err, "failed to request ping command")
 		return
@@ -72,39 +79,7 @@ func (c *Client) KeepAlive() (err error) {
 	return
 }
 
-func (c *Client) Connect() (err error) {
-	connect := &pulsar_proto.CommandConnect{
-		ClientVersion:   proto.String(ClientName),
-		AuthMethod:      pulsar_proto.AuthMethod_AuthMethodNone.Enum(),
-		ProtocolVersion: proto.Int32(DefaultProtocolVersion),
-	}
-	if err = c.conn.Connect(connect); err != nil {
-		err = errors.Wrap(err, "failed to request connect command")
-		return
-	}
-
-	time.Sleep(1 * time.Second) // maybe connected
-
-	var res *Response
-	res, err = c.conn.Receive()
-	if err != nil {
-		err = errors.New("failed to receive connected command")
-		return
-	}
-
-	connected := res.BaseCommand.GetRawCommand().GetConnected()
-	if connected == nil {
-		err = errors.New("failed to receive connected command")
-		return
-	}
-
-	log.WithFields(log.Fields{
-		"connected": connected,
-	}).Debug("connection is ready")
-	return
-}
-
-func (c *Client) ReceiveSuccess() (success *pulsar_proto.CommandSuccess, err error) {
+func (c *PulsarClient) ReceiveSuccess() (success *pulsar_proto.CommandSuccess, err error) {
 	res, err := c.Receive()
 	if err != nil {
 		err = errors.Wrap(err, "failed to receive succcess command")
@@ -118,24 +93,7 @@ func (c *Client) ReceiveSuccess() (success *pulsar_proto.CommandSuccess, err err
 	return
 }
 
-func (c *Client) Send(r *Request) (err error) {
-	err = c.conn.Send(r)
-	return
-}
-
-func (c *Client) Receive() (res *Response, err error) {
-	res, err = c.conn.Receive()
-	return
-}
-
-func (c *Client) Close() {
-	c.conn.Close()
-	return
-}
-
-func NewClient(ac *AsyncTcpConn) (client *Client) {
-	client = &Client{
-		conn: ac,
-	}
+func NewClient(ac *AsyncTcpConn) (client *PulsarClient) {
+	client = &PulsarClient{ac}
 	return
 }
