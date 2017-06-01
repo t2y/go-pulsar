@@ -3,6 +3,7 @@ package pulsar
 import (
 	"bytes"
 	"encoding/binary"
+	"fmt"
 	"io"
 	"net"
 	"sync"
@@ -31,6 +32,13 @@ const (
 	ConnectionStateReady
 )
 
+var ( // Errors
+	ErrNoConnection  = errors.New("need to establish a connection")
+	ErrSentConnect   = errors.New("connecting now, wait for a couple of seconds")
+	ErrHasConnection = errors.New("connection has already established")
+	ErrCloseReacChan = errors.New("read channel has closed")
+)
+
 type Request struct {
 	Message proto.Message
 	Meta    *pulsar_proto.MessageMetadata
@@ -45,6 +53,7 @@ type Response struct {
 }
 
 type AsyncTcpConn struct {
+	id      string
 	wch     chan *Request
 	ech     chan error
 	rch     chan *Response
@@ -56,12 +65,7 @@ type AsyncTcpConn struct {
 	state          ConnectionState
 }
 
-var ( // Errors
-	ErrNoConnection  = errors.New("need to establish a connection")
-	ErrSentConnect   = errors.New("connecting now, wait for a couple of seconds")
-	ErrHasConnection = errors.New("connection has already established")
-	ErrCloseReacChan = errors.New("read channel has closed")
-)
+type AsyncTcpConns []*AsyncTcpConn
 
 func (ac *AsyncTcpConn) write(data []byte) (total int, err error) {
 	if _, err = io.Copy(ac.conn, bytes.NewBuffer(data)); err != nil {
@@ -185,10 +189,10 @@ func (ac *AsyncTcpConn) decodeFrame(frame *command.Frame) (response *Response) {
 
 	switch t := base.GetType(); *t {
 	case pulsar_proto.BaseCommand_PING:
-		log.Debug("received ping")
+		log.Debug(fmt.Sprintf("%s: received ping", ac.id))
 		ac.conn.SetDeadline(time.Now().Add(ac.timeout))
 		ac.wch <- &Request{Message: &pulsar_proto.CommandPong{}}
-		log.Debug("send pong")
+		log.Debug(fmt.Sprintf("%s: send pong", ac.id))
 		return
 	case pulsar_proto.BaseCommand_CONNECTED:
 		ac.receiveMutex.Lock()
@@ -239,6 +243,11 @@ func (ac *AsyncTcpConn) readLoop() {
 
 		ac.rch <- response
 	}
+}
+
+func (ac *AsyncTcpConn) GetID() (id string) {
+	id = ac.id
+	return
 }
 
 func (ac *AsyncTcpConn) Connect(msg *pulsar_proto.CommandConnect) (err error) {
@@ -339,6 +348,7 @@ func (ac *AsyncTcpConn) Close() {
 }
 
 func (ac *AsyncTcpConn) Run() {
+	ac.id = fmt.Sprintf("%p", ac)
 	go ac.writeLoop()
 	go ac.readLoop()
 }

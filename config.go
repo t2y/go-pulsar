@@ -17,8 +17,10 @@ const (
 type IniConfig struct {
 	LogLevelString string `ini:"log_level"`
 
-	URLString string        `ini:"url"`
-	Timeout   time.Duration `ini:"timeout"`
+	URLString        string        `ini:"url"`
+	Timeout          time.Duration `ini:"timeout"`
+	MinConnectionNum int           `ini:"min_connection_num"`
+	MaxConnectionNum int           `ini:"max_connection_num"`
 
 	// internal use
 	URL      *url.URL  `ini:"-"`
@@ -26,10 +28,12 @@ type IniConfig struct {
 }
 
 type Config struct {
-	Proto      string
-	LocalAddr  *net.TCPAddr
-	RemoteAddr *net.TCPAddr
-	Timeout    time.Duration
+	Proto            string
+	LocalAddr        *net.TCPAddr
+	RemoteAddr       *net.TCPAddr
+	Timeout          time.Duration
+	MinConnectionNum int
+	MaxConnectionNum int
 
 	URL      *url.URL
 	LogLevel log.Level
@@ -66,7 +70,7 @@ func LoadIniFile(path string) (iniConf *IniConfig, err error) {
 	log.WithFields(log.Fields{
 		"path":    path,
 		"iniConf": iniConf,
-	}).Debug("read and parse ini file")
+	}).Info("read and parse ini file")
 	return
 }
 
@@ -77,11 +81,22 @@ func NewConfigFromIni(iniConf *IniConfig) (c *Config, err error) {
 		return
 	}
 
+	minConnNum := iniConf.MinConnectionNum
+	if minConnNum == 0 {
+		minConnNum = defaultMinConnNum
+	}
+	maxConnNum := iniConf.MaxConnectionNum
+	if maxConnNum == 0 {
+		maxConnNum = defaultMaxConnNum
+	}
+
 	c = &Config{
-		Proto:      PROTO_TCP,
-		LocalAddr:  nil,
-		RemoteAddr: remoteTcpAddr,
-		Timeout:    iniConf.Timeout,
+		Proto:            PROTO_TCP,
+		LocalAddr:        nil,
+		RemoteAddr:       remoteTcpAddr,
+		Timeout:          iniConf.Timeout,
+		MinConnectionNum: minConnNum,
+		MaxConnectionNum: maxConnNum,
 
 		URL:      iniConf.URL,
 		LogLevel: iniConf.LogLevel,
