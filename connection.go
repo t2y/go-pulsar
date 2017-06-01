@@ -19,6 +19,16 @@ import (
 const (
 	writeChanSize = 32
 	readChanSize  = 32
+
+	defaultWaitConnectedSecond = 3
+)
+
+type ConnectionState int
+
+const (
+	ConnectionStateNone ConnectionState = iota + 1
+	ConnectionStateSentConnectFrame
+	ConnectionStateReady
 )
 
 type Request struct {
@@ -40,10 +50,18 @@ type AsyncTcpConn struct {
 	rch     chan *Response
 	timeout time.Duration
 
-	readMutex sync.Mutex
-	reqMutex  sync.Mutex
-	conn      *net.TCPConn
+	readFrameMutex sync.Mutex
+	receiveMutex   sync.Mutex
+	conn           *net.TCPConn
+	state          ConnectionState
 }
+
+var ( // Errors
+	ErrNoConnection  = errors.New("need to establish a connection")
+	ErrSentConnect   = errors.New("connecting now, wait for a couple of seconds")
+	ErrHasConnection = errors.New("connection has already established")
+	ErrCloseReacChan = errors.New("read channel has closed")
+)
 
 func (ac *AsyncTcpConn) write(data []byte) (total int, err error) {
 	if _, err = io.Copy(ac.conn, bytes.NewBuffer(data)); err != nil {
@@ -103,8 +121,8 @@ func (ac *AsyncTcpConn) read() (frame *command.Frame, err error) {
 	//
 	//	  [TOTAL_SIZE] [CMD_SIZE][CMD] [METADATA_SIZE][METADATA] [PAYLOAD]
 
-	ac.readMutex.Lock()
-	defer ac.readMutex.Unlock()
+	ac.readFrameMutex.Lock()
+	defer ac.readFrameMutex.Unlock()
 
 	totalSizeFrame, err := ac.readFrame(int64(command.FrameSizeFieldSize))
 	if err != nil {
@@ -158,7 +176,7 @@ func (ac *AsyncTcpConn) read() (frame *command.Frame, err error) {
 	return
 }
 
-func (ac *AsyncTcpConn) handleFrame(frame *command.Frame) (response *Response) {
+func (ac *AsyncTcpConn) decodeFrame(frame *command.Frame) (response *Response) {
 	base := command.NewBase()
 	if _, err := base.Unmarshal(frame.Cmddata); err != nil {
 		err = errors.Wrap(err, "failed to unmarshal base")
@@ -172,6 +190,10 @@ func (ac *AsyncTcpConn) handleFrame(frame *command.Frame) (response *Response) {
 		ac.wch <- &Request{Message: &pulsar_proto.CommandPong{}}
 		log.Debug("send pong")
 		return
+	case pulsar_proto.BaseCommand_CONNECTED:
+		ac.receiveMutex.Lock()
+		ac.state = ConnectionStateReady
+		ac.receiveMutex.Unlock()
 	}
 
 	response = &Response{BaseCommand: base}
@@ -210,7 +232,7 @@ func (ac *AsyncTcpConn) readLoop() {
 			return
 		}
 
-		response := ac.handleFrame(frame)
+		response := ac.decodeFrame(frame)
 		if response == nil {
 			continue
 		}
@@ -219,19 +241,60 @@ func (ac *AsyncTcpConn) readLoop() {
 	}
 }
 
+func (ac *AsyncTcpConn) Connect(msg *pulsar_proto.CommandConnect) (err error) {
+	switch ac.state {
+	case ConnectionStateSentConnectFrame:
+		err = ErrSentConnect
+		return
+	case ConnectionStateReady:
+		err = ErrHasConnection
+		return
+	}
+
+	request := &Request{Message: msg}
+	ac.wch <- request
+	err, _ = <-ac.ech
+	if err == nil {
+		ac.receiveMutex.Lock()
+		ac.state = ConnectionStateSentConnectFrame
+		ac.receiveMutex.Unlock()
+	}
+	return
+}
+
 func (ac *AsyncTcpConn) Send(r *Request) (err error) {
+	if ac.state != ConnectionStateReady {
+		err = ErrNoConnection
+		return
+	}
+
 	ac.wch <- r
 	err, _ = <-ac.ech
 	return
 }
 
 func (ac *AsyncTcpConn) Receive() (response *Response, err error) {
-	ac.reqMutex.Lock()
+	switch ac.state {
+	case ConnectionStateNone:
+		err = ErrHasConnection
+		return
+	case ConnectionStateSentConnectFrame:
+		log.WithFields(log.Fields{
+			"second": defaultWaitConnectedSecond,
+		}).Debug("waiting to receive connected")
+		time.Sleep(defaultWaitConnectedSecond * time.Second)
+		if ac.state != ConnectionStateReady {
+			err = ErrHasConnection
+			return
+		}
+	}
+
+	ac.receiveMutex.Lock()
 	response, ok := <-ac.rch
-	defer ac.reqMutex.Unlock()
+	ac.receiveMutex.Unlock()
 
 	if !ok {
-		err = errors.New("read channel has closed")
+		err = ErrCloseReacChan
 		return
 	}
 
@@ -241,21 +304,20 @@ func (ac *AsyncTcpConn) Receive() (response *Response, err error) {
 			"base":    response.BaseCommand.GetRawCommand(),
 			"meta":    response.Meta,
 			"payload": response.Payload,
-			"error":   response.Error,
 		}).Debug("receive in AsyncTcpConn")
 	}
 	return
 }
 
 func (ac *AsyncTcpConn) Request(r *Request) (response *Response, err error) {
-	ac.reqMutex.Lock()
+	ac.receiveMutex.Lock()
 	err = ac.Send(r)
 	if err != nil {
 		err = errors.Wrap(err, "failed to send in request")
 		return
 	}
 
-	ac.reqMutex.Unlock()
+	ac.receiveMutex.Unlock()
 	response, err = ac.Receive()
 	if err != nil {
 		err = errors.Wrap(err, "failed to receive in request")
@@ -266,8 +328,8 @@ func (ac *AsyncTcpConn) Request(r *Request) (response *Response, err error) {
 }
 
 func (ac *AsyncTcpConn) Close() {
-	ac.reqMutex.Lock()
-	defer ac.reqMutex.Unlock()
+	ac.receiveMutex.Lock()
+	defer ac.receiveMutex.Unlock()
 
 	ac.conn.Close()
 	close(ac.wch)
@@ -283,10 +345,11 @@ func (ac *AsyncTcpConn) Run() {
 
 func NewAsyncTcpConn(c *Config, tc *net.TCPConn) (ac *AsyncTcpConn) {
 	ac = &AsyncTcpConn{
-		conn: tc,
-		wch:  make(chan *Request, writeChanSize),
-		ech:  make(chan error, writeChanSize),
-		rch:  make(chan *Response, readChanSize),
+		conn:  tc,
+		state: ConnectionStateNone,
+		wch:   make(chan *Request, writeChanSize),
+		ech:   make(chan error, writeChanSize),
+		rch:   make(chan *Response, readChanSize),
 
 		timeout: c.Timeout,
 	}

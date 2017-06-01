@@ -1,7 +1,6 @@
 package pulsar
 
 import (
-	"sync"
 	"time"
 
 	log "github.com/Sirupsen/logrus"
@@ -20,25 +19,13 @@ const (
 	DefaultProtocolVersion = 7
 )
 
-type ClientState int
-
-const (
-	ClientStateNone             ClientState = 0
-	ClientStateSentConnectFrame ClientState = 1
-	ClientStateReady            ClientState = 2
-)
-
 type Client struct {
-	conn  *AsyncTcpConn
-	mutex sync.Mutex
-	state ClientState
+	conn *AsyncTcpConn
 }
 
 func (c *Client) LookupTopic(
 	topic string, requestId uint64, authoritative bool,
 ) (err error) {
-	c.mutex.Lock()
-	defer c.mutex.Unlock()
 
 	lookup := &pulsar_proto.CommandLookupTopic{
 		Topic:         proto.String(topic),
@@ -68,9 +55,6 @@ func (c *Client) LookupTopic(
 }
 
 func (c *Client) KeepAlive() (err error) {
-	c.mutex.Lock()
-	defer c.mutex.Unlock()
-
 	var res *Response
 	ping := &pulsar_proto.CommandPing{}
 	res, err = c.conn.Request(&Request{Message: ping})
@@ -89,23 +73,22 @@ func (c *Client) KeepAlive() (err error) {
 }
 
 func (c *Client) Connect() (err error) {
-	c.mutex.Lock()
-	defer c.mutex.Unlock()
-
-	if c.state == ClientStateReady {
-		log.Debug("connection has already established")
-		return
-	}
-
 	connect := &pulsar_proto.CommandConnect{
 		ClientVersion:   proto.String(ClientName),
 		AuthMethod:      pulsar_proto.AuthMethod_AuthMethodNone.Enum(),
 		ProtocolVersion: proto.Int32(DefaultProtocolVersion),
 	}
-	var res *Response
-	res, err = c.conn.Request(&Request{Message: connect})
-	if err != nil {
+	if err = c.conn.Connect(connect); err != nil {
 		err = errors.Wrap(err, "failed to request connect command")
+		return
+	}
+
+	time.Sleep(1 * time.Second) // maybe connected
+
+	var res *Response
+	res, err = c.conn.Receive()
+	if err != nil {
+		err = errors.New("failed to receive connected command")
 		return
 	}
 
@@ -114,12 +97,10 @@ func (c *Client) Connect() (err error) {
 		err = errors.New("failed to receive connected command")
 		return
 	}
-	c.state = ClientStateReady
 
 	log.WithFields(log.Fields{
 		"connected": connected,
 	}).Debug("connection is ready")
-
 	return
 }
 
@@ -138,34 +119,23 @@ func (c *Client) ReceiveSuccess() (success *pulsar_proto.CommandSuccess, err err
 }
 
 func (c *Client) Send(r *Request) (err error) {
-	c.mutex.Lock()
-	defer c.mutex.Unlock()
-
 	err = c.conn.Send(r)
 	return
 }
 
 func (c *Client) Receive() (res *Response, err error) {
-	c.mutex.Lock()
-	defer c.mutex.Unlock()
-
 	res, err = c.conn.Receive()
 	return
 }
 
 func (c *Client) Close() {
-	c.mutex.Lock()
-	defer c.mutex.Unlock()
-
 	c.conn.Close()
-	c.state = ClientStateNone
 	return
 }
 
 func NewClient(ac *AsyncTcpConn) (client *Client) {
 	client = &Client{
-		conn:  ac,
-		state: ClientStateNone,
+		conn: ac,
 	}
 	return
 }
