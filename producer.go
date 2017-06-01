@@ -10,22 +10,11 @@ import (
 	pulsar_proto "github.com/t2y/go-pulsar/proto/pb"
 )
 
-type Producer interface {
-	CreateProcuder(topic string, producerId, requestId uint64) error
-	ReceiveProducerSuccess() (*pulsar_proto.CommandProducerSuccess, error)
-	SendSend(producerId, sequenceId uint64, numMessages int32,
-		producerName string, payload string, isAsync bool) error
-	ReceiveSendReceipt() (*pulsar_proto.CommandSendReceipt, error)
-	CloseProducer(
-		producerId, requestId uint64) (*pulsar_proto.CommandSuccess, error)
+type Producer struct {
+	*PulsarClient
 }
 
-type ProducerClient struct {
-	Client
-	Producer
-}
-
-func (p *ProducerClient) CreateProcuder(
+func (p *Producer) CreateProcuder(
 	topic string, producerId, requestId uint64,
 ) (err error) {
 	if err = p.LookupTopic(topic, requestId, false); err != nil {
@@ -48,7 +37,7 @@ func (p *ProducerClient) CreateProcuder(
 	return
 }
 
-func (p *ProducerClient) ReceiveProducerSuccess() (
+func (p *Producer) ReceiveProducerSuccess() (
 	success *pulsar_proto.CommandProducerSuccess, err error,
 ) {
 	res, err := p.Receive()
@@ -75,7 +64,7 @@ func (p *ProducerClient) ReceiveProducerSuccess() (
 	return
 }
 
-func (p *ProducerClient) SendSend(
+func (p *Producer) SendSend(
 	producerId, sequenceId uint64, numMessages int32,
 	producerName string, payload string, isAsync bool,
 ) (err error) {
@@ -103,7 +92,7 @@ func (p *ProducerClient) SendSend(
 	return
 }
 
-func (p *ProducerClient) ReceiveSendReceipt() (
+func (p *Producer) ReceiveSendReceipt() (
 	receipt *pulsar_proto.CommandSendReceipt, err error,
 ) {
 	res, err := p.Receive()
@@ -119,7 +108,7 @@ func (p *ProducerClient) ReceiveSendReceipt() (
 	return
 }
 
-func (p *ProducerClient) CloseProducer(
+func (p *Producer) CloseProducer(
 	producerId, requestId uint64,
 ) (success *pulsar_proto.CommandSuccess, err error) {
 	close := &pulsar_proto.CommandCloseProducer{
@@ -136,7 +125,7 @@ func (p *ProducerClient) CloseProducer(
 	return
 }
 
-func NewProducer(client *PulsarClient) (p *ProducerClient) {
-	p = &ProducerClient{client, nil}
+func NewProducer(client *PulsarClient) (p *Producer) {
+	p = &Producer{client}
 	return
 }

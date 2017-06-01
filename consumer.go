@@ -9,23 +9,11 @@ import (
 	pulsar_proto "github.com/t2y/go-pulsar/proto/pb"
 )
 
-type Consumer interface {
-	Subscribe(topic, subscription, subType string,
-		consumerId, requestId uint64) error
-	Flow(consumerId uint64, messagePermits uint32) error
-	ReceiveMessage() (*command.Message, error)
-	SendAck(consumerId uint64, ackType pulsar_proto.CommandAck_AckType,
-		msgIdData *pulsar_proto.MessageIdData,
-		validationError *pulsar_proto.CommandAck_ValidationError) error
-	CloseConsumer(consumerId, requestId uint64) error
+type Consumer struct {
+	*PulsarClient
 }
 
-type ConsumerClient struct {
-	Client
-	Consumer
-}
-
-func (c *ConsumerClient) Subscribe(
+func (c *Consumer) Subscribe(
 	topic, subscription, subType string, consumerId, requestId uint64,
 ) (err error) {
 	err = c.LookupTopic(topic, requestId, false)
@@ -52,7 +40,7 @@ func (c *ConsumerClient) Subscribe(
 	return
 }
 
-func (c *ConsumerClient) Flow(
+func (c *Consumer) Flow(
 	consumerId uint64, messagePermits uint32,
 ) (err error) {
 	flow := &pulsar_proto.CommandFlow{
@@ -70,7 +58,7 @@ func (c *ConsumerClient) Flow(
 	return
 }
 
-func (c *ConsumerClient) ReceiveMessage() (msg *command.Message, err error) {
+func (c *Consumer) ReceiveMessage() (msg *command.Message, err error) {
 	res, err := c.Receive()
 	if err != nil {
 		err = errors.Wrap(err, "failed to receive message command")
@@ -87,7 +75,7 @@ func (c *ConsumerClient) ReceiveMessage() (msg *command.Message, err error) {
 	return
 }
 
-func (c *ConsumerClient) SendAck(
+func (c *Consumer) SendAck(
 	consumerId uint64, ackType pulsar_proto.CommandAck_AckType,
 	msgIdData *pulsar_proto.MessageIdData,
 	validationError *pulsar_proto.CommandAck_ValidationError,
@@ -109,7 +97,7 @@ func (c *ConsumerClient) SendAck(
 	return
 }
 
-func (c *ConsumerClient) CloseConsumer(
+func (c *Consumer) CloseConsumer(
 	consumerId, requestId uint64,
 ) (err error) {
 	close := &pulsar_proto.CommandCloseConsumer{
@@ -127,7 +115,7 @@ func (c *ConsumerClient) CloseConsumer(
 	return
 }
 
-func NewConsumer(client *PulsarClient) (c *ConsumerClient) {
-	c = &ConsumerClient{client, nil}
+func NewConsumer(client *PulsarClient) (c *Consumer) {
+	c = &Consumer{client}
 	return
 }
