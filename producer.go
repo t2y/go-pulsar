@@ -17,8 +17,8 @@ type Producer struct {
 func (p *Producer) CreateProcuder(
 	topic string, producerId, requestId uint64,
 ) (err error) {
-	if err = p.LookupTopic(topic, requestId, false); err != nil {
-		err = errors.Wrap(err, "failed to request lookup command")
+	if err = p.SetLookupTopicConnection(topic, requestId, false); err != nil {
+		err = errors.Wrap(err, "failed to set lookup topic connection")
 		return
 	}
 
@@ -28,7 +28,7 @@ func (p *Producer) CreateProcuder(
 		RequestId:  proto.Uint64(requestId),
 	}
 
-	if err = p.Send(&Request{Message: producer}); err != nil {
+	if err = p.conn.Send(&Request{Message: producer}); err != nil {
 		err = errors.Wrap(err, "failed to send producer command")
 		return
 	}
@@ -40,7 +40,7 @@ func (p *Producer) CreateProcuder(
 func (p *Producer) ReceiveProducerSuccess() (
 	success *pulsar_proto.CommandProducerSuccess, err error,
 ) {
-	res, err := p.Receive()
+	res, err := p.conn.Receive()
 	if err != nil {
 		err = errors.Wrap(err, "failed to receive producerSuccess command")
 		return
@@ -83,7 +83,7 @@ func (p *Producer) SendSend(
 	}
 
 	request := &Request{Message: send, Meta: meta, Payload: payload}
-	if err = p.Send(request); err != nil {
+	if err = p.conn.Send(request); err != nil {
 		err = errors.Wrap(err, "failed to send 'send' command")
 		return
 	}
@@ -95,7 +95,7 @@ func (p *Producer) SendSend(
 func (p *Producer) ReceiveSendReceipt() (
 	receipt *pulsar_proto.CommandSendReceipt, err error,
 ) {
-	res, err := p.Receive()
+	res, err := p.conn.Receive()
 	if err != nil {
 		err = errors.Wrap(err, "failed to receive sendReceipt command")
 		return
@@ -116,7 +116,7 @@ func (p *Producer) CloseProducer(
 		RequestId:  proto.Uint64(requestId),
 	}
 
-	if err = p.Send(&Request{Message: close}); err != nil {
+	if err = p.conn.Send(&Request{Message: close}); err != nil {
 		err = errors.Wrap(err, "failed to send closeProducer command")
 		return
 	}

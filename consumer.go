@@ -16,9 +16,8 @@ type Consumer struct {
 func (c *Consumer) Subscribe(
 	topic, subscription, subType string, consumerId, requestId uint64,
 ) (err error) {
-	err = c.LookupTopic(topic, requestId, false)
-	if err != nil {
-		err = errors.Wrap(err, "failed to request lookup command")
+	if err = c.SetLookupTopicConnection(topic, requestId, false); err != nil {
+		err = errors.Wrap(err, "failed to set lookup topic connection")
 		return
 	}
 
@@ -30,7 +29,7 @@ func (c *Consumer) Subscribe(
 		RequestId:    proto.Uint64(requestId),
 	}
 
-	err = c.Send(&Request{Message: sub})
+	err = c.conn.Send(&Request{Message: sub})
 	if err != nil {
 		err = errors.Wrap(err, "failed to send subscribe command")
 		return
@@ -48,7 +47,7 @@ func (c *Consumer) Flow(
 		MessagePermits: proto.Uint32(messagePermits),
 	}
 
-	err = c.Send(&Request{Message: flow})
+	err = c.conn.Send(&Request{Message: flow})
 	if err != nil {
 		err = errors.Wrap(err, "failed to request flow command")
 		return
@@ -59,7 +58,7 @@ func (c *Consumer) Flow(
 }
 
 func (c *Consumer) ReceiveMessage() (msg *command.Message, err error) {
-	res, err := c.Receive()
+	res, err := c.conn.Receive()
 	if err != nil {
 		err = errors.Wrap(err, "failed to receive message command")
 		return
@@ -87,7 +86,7 @@ func (c *Consumer) SendAck(
 		ValidationError: validationError,
 	}
 
-	err = c.Send(&Request{Message: ack})
+	err = c.conn.Send(&Request{Message: ack})
 	if err != nil {
 		err = errors.Wrap(err, "failed to send ack command")
 		return
@@ -105,7 +104,7 @@ func (c *Consumer) CloseConsumer(
 		RequestId:  proto.Uint64(requestId),
 	}
 
-	err = c.Send(&Request{Message: close})
+	err = c.conn.Send(&Request{Message: close})
 	if err != nil {
 		err = errors.Wrap(err, "failed to send closeConsumer command")
 		return

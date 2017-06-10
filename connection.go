@@ -54,6 +54,10 @@ type Response struct {
 
 type Conn interface {
 	GetID() string
+	GetConfig() *Config
+	GetConnection() Conn
+	LookupTopic(*pulsar_proto.CommandLookupTopic,
+	) (*pulsar_proto.CommandLookupTopicResponse, error)
 	Connect(*pulsar_proto.CommandConnect) error
 	Send(*Request) error
 	Receive() (*Response, error)
@@ -62,11 +66,12 @@ type Conn interface {
 }
 
 type AsyncTcpConn struct {
-	id      string
-	wch     chan *Request
-	ech     chan error
-	rch     chan *Response
-	timeout time.Duration
+	config *Config
+
+	id  string
+	wch chan *Request
+	ech chan error
+	rch chan *Response
 
 	readFrameMutex sync.Mutex
 	receiveMutex   sync.Mutex
@@ -199,7 +204,7 @@ func (ac *AsyncTcpConn) decodeFrame(frame *command.Frame) (response *Response) {
 	switch t := base.GetType(); *t {
 	case pulsar_proto.BaseCommand_PING:
 		log.Debug(fmt.Sprintf("%s: received ping", ac.id))
-		ac.conn.SetDeadline(time.Now().Add(ac.timeout))
+		ac.conn.SetDeadline(time.Now().Add(ac.config.Timeout))
 		ac.wch <- &Request{Message: &pulsar_proto.CommandPong{}}
 		log.Debug(fmt.Sprintf("%s: send pong", ac.id))
 		return
@@ -256,6 +261,35 @@ func (ac *AsyncTcpConn) readLoop() {
 
 func (ac *AsyncTcpConn) GetID() (id string) {
 	id = ac.id
+	return
+}
+
+func (ac *AsyncTcpConn) GetConfig() (c *Config) {
+	c = ac.config
+	return
+}
+
+func (ac *AsyncTcpConn) GetConnection() (conn Conn) {
+	conn = ac
+	return
+}
+
+func (ac *AsyncTcpConn) LookupTopic(
+	msg *pulsar_proto.CommandLookupTopic,
+) (res *pulsar_proto.CommandLookupTopicResponse, err error) {
+	var r *Response
+	r, err = ac.Request(&Request{Message: msg})
+	if err != nil {
+		err = errors.Wrap(err, "failed to request lookupTopic command")
+		return
+	}
+
+	res = r.BaseCommand.GetRawCommand().GetLookupTopicResponse()
+	if res == nil {
+		err = errors.Wrap(err, "failed to receive lookupTopicResponse command")
+		return
+	}
+
 	return
 }
 
@@ -364,13 +398,12 @@ func (ac *AsyncTcpConn) Run() {
 
 func NewAsyncTcpConn(c *Config, tc *net.TCPConn) (ac *AsyncTcpConn) {
 	ac = &AsyncTcpConn{
-		conn:  tc,
-		state: ConnectionStateNone,
-		wch:   make(chan *Request, writeChanSize),
-		ech:   make(chan error, writeChanSize),
-		rch:   make(chan *Response, readChanSize),
-
-		timeout: c.Timeout,
+		config: c,
+		conn:   tc,
+		state:  ConnectionStateNone,
+		wch:    make(chan *Request, writeChanSize),
+		ech:    make(chan error, writeChanSize),
+		rch:    make(chan *Response, readChanSize),
 	}
 	ac.Run()
 	return

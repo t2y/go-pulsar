@@ -39,6 +39,21 @@ type Config struct {
 	LogLevel log.Level
 }
 
+func (c *Config) Copy() (config *Config) {
+	// copy Config data except net.TCPAddr, url.URL
+	config = &Config{
+		Proto:            c.Proto,
+		LocalAddr:        nil,
+		RemoteAddr:       nil,
+		Timeout:          c.Timeout,
+		MinConnectionNum: c.MinConnectionNum,
+		MaxConnectionNum: c.MaxConnectionNum,
+		URL:              nil,
+		LogLevel:         c.LogLevel,
+	}
+	return
+}
+
 func LoadIniFile(path string) (iniConf *IniConfig, err error) {
 	f, err := ini.Load(path)
 	if err != nil {
