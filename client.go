@@ -23,7 +23,8 @@ const (
 
 type PulsarClient struct {
 	Conn
-	conn Conn // own connection for a broker created by topic lookup response
+	conn       Conn // own connection for a broker created by topic lookup response
+	partitions uint32
 }
 
 func (c *PulsarClient) LookupTopicWithConnect(
@@ -104,6 +105,25 @@ func (c *PulsarClient) SetLookupTopicConnection(
 	return
 }
 
+func (c *PulsarClient) GetPartitionedTopicMetadata(
+	topic string, requestId uint64,
+) (err error) {
+	var res *Response
+	metadata := &pulsar_proto.CommandPartitionedTopicMetadata{
+		Topic:     proto.String(topic),
+		RequestId: proto.Uint64(requestId),
+	}
+	res, err = c.Request(&Request{Message: metadata})
+	if err != nil {
+		err = errors.Wrap(err, "failed to request PartitionedTopicMetadata command")
+		return
+	}
+
+	response := res.BaseCommand.GetRawCommand().GetPartitionMetadataResponse()
+	c.partitions = response.GetPartitions()
+	return
+}
+
 func (c *PulsarClient) KeepAlive() (err error) {
 	var res *Response
 	ping := &pulsar_proto.CommandPing{}
@@ -168,6 +188,6 @@ func newAsyncTcpConnFromLookupTopicResponse(
 }
 
 func NewClient(ac *AsyncTcpConn) (client *PulsarClient) {
-	client = &PulsarClient{ac, ac.GetConnection()}
+	client = &PulsarClient{ac, ac.GetConnection(), 0}
 	return
 }
