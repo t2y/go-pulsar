@@ -6,6 +6,7 @@ import (
 
 type Message struct {
 	cmd  *pulsar_proto.CommandMessage
+	meta *pulsar_proto.MessageMetadata
 	body string
 }
 
@@ -21,10 +22,12 @@ func (m Message) GetBody() (body string) {
 
 func NewMessage(
 	cmd *pulsar_proto.CommandMessage,
+	meta *pulsar_proto.MessageMetadata,
 	body string,
 ) (msg *Message) {
 	msg = &Message{
 		cmd:  cmd,
+		meta: meta,
 		body: body,
 	}
 	return

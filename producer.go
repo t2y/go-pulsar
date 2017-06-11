@@ -64,14 +64,16 @@ func (p *Producer) ReceiveProducerSuccess() (
 	return
 }
 
+const defaultNumMessages = 1
+
 func (p *Producer) SendSend(
-	producerId, sequenceId uint64, numMessages int32,
-	producerName string, payload string, isAsync bool,
+	producerId, sequenceId uint64, producerName, payload string,
+	keyValues KeyValues,
 ) (err error) {
 	send := &pulsar_proto.CommandSend{
 		ProducerId:  proto.Uint64(producerId),
 		SequenceId:  proto.Uint64(sequenceId),
-		NumMessages: proto.Int32(numMessages),
+		NumMessages: proto.Int32(defaultNumMessages),
 	}
 
 	now := time.Now().Unix()
@@ -79,7 +81,7 @@ func (p *Producer) SendSend(
 		ProducerName: proto.String(producerName),
 		SequenceId:   proto.Uint64(sequenceId),
 		PublishTime:  proto.Uint64(uint64(now)),
-		Properties:   []*pulsar_proto.KeyValue{},
+		Properties:   ConvertKeyValues(keyValues),
 	}
 
 	request := &Request{Message: send, Meta: meta, Payload: payload}
