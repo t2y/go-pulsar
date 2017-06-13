@@ -42,6 +42,22 @@ func MarshalMessage(msg proto.Message) (
 	return
 }
 
+func MakeBatchMessagePayload(
+	batchMessage BatchMessage,
+) (data []byte, err error) {
+	for singlePayload, singleMetadata := range batchMessage {
+		var meta []byte
+		_, meta, err = MarshalMessage(singleMetadata)
+		if err != nil {
+			err = errors.Wrap(err, "failed to marshal single meta message")
+			return
+		}
+		data = append(data, meta...)
+		data = append(data, []byte(singlePayload)...)
+	}
+	return
+}
+
 func HasChecksum(frame []byte) (r bool) {
 	nextBytes := frame[0:FrameMagicNumberFieldSize]
 	r = bytes.Equal(nextBytes, FrameMagicNumber)

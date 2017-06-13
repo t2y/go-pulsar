@@ -12,14 +12,14 @@ type KeyValue struct {
 
 type KeyValues []KeyValue
 
-func ConvertKeyValues(keyValues KeyValues) (kvs []*pulsar_proto.KeyValue) {
-	kvs = make([]*pulsar_proto.KeyValue, 0, len(keyValues))
-	for _, keyValue := range keyValues {
+func (kvs KeyValues) Convert() (properties []*pulsar_proto.KeyValue) {
+	properties = make([]*pulsar_proto.KeyValue, 0, len(kvs))
+	for _, keyValue := range kvs {
 		kv := &pulsar_proto.KeyValue{
 			Key:   proto.String(keyValue.Key),
 			Value: proto.String(keyValue.Value),
 		}
-		kvs = append(kvs, kv)
+		properties = append(properties, kv)
 	}
 	return
 }

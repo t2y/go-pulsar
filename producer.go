@@ -7,6 +7,7 @@ import (
 	"github.com/golang/protobuf/proto"
 	"github.com/pkg/errors"
 
+	"github.com/t2y/go-pulsar/proto/command"
 	pulsar_proto "github.com/t2y/go-pulsar/proto/pb"
 )
 
@@ -81,7 +82,7 @@ func (p *Producer) SendSend(
 		ProducerName: proto.String(producerName),
 		SequenceId:   proto.Uint64(sequenceId),
 		PublishTime:  proto.Uint64(uint64(now)),
-		Properties:   ConvertKeyValues(keyValues),
+		Properties:   keyValues.Convert(),
 	}
 
 	request := &Request{Message: send, Meta: meta, Payload: payload}
@@ -91,6 +92,39 @@ func (p *Producer) SendSend(
 	}
 
 	log.Debug("sent 'send'")
+	return
+}
+
+func (p *Producer) SendBatchSend(
+	producerId, sequenceId uint64,
+	producerName string, batchMessage command.BatchMessage,
+	compression *pulsar_proto.CompressionType,
+) (err error) {
+	numMessages := int32(len(batchMessage))
+	send := &pulsar_proto.CommandSend{
+		ProducerId:  proto.Uint64(producerId),
+		SequenceId:  proto.Uint64(sequenceId),
+		NumMessages: proto.Int32(numMessages),
+	}
+
+	now := time.Now().Unix()
+	meta := &pulsar_proto.MessageMetadata{
+		ProducerName: proto.String(producerName),
+		SequenceId:   proto.Uint64(sequenceId),
+		PublishTime:  proto.Uint64(uint64(now)),
+		Properties:   []*pulsar_proto.KeyValue{},
+		// batch mode
+		Compression:        compression,
+		NumMessagesInBatch: proto.Int32(numMessages),
+	}
+
+	request := &Request{Message: send, Meta: meta, BatchMessage: batchMessage}
+	if err = p.conn.Send(request); err != nil {
+		err = errors.Wrap(err, "failed to send batch 'send' command")
+		return
+	}
+
+	log.Debug("sent batch 'send'")
 	return
 }
 

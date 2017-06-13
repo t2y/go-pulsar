@@ -4,6 +4,8 @@ import (
 	pulsar_proto "github.com/t2y/go-pulsar/proto/pb"
 )
 
+type BatchMessage map[string]*pulsar_proto.SingleMessageMetadata
+
 type Message struct {
 	cmd  *pulsar_proto.CommandMessage
 	meta *pulsar_proto.MessageMetadata

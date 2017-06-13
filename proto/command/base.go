@@ -10,9 +10,11 @@ import (
 )
 
 type Base struct {
-	base    *pulsar_proto.BaseCommand
-	meta    *pulsar_proto.MessageMetadata
-	payload string
+	base            *pulsar_proto.BaseCommand
+	meta            *pulsar_proto.MessageMetadata
+	payload         string
+	batchMessage    BatchMessage
+	hasBatchMessage bool
 }
 
 func (c *Base) GetRawCommand() (raw *pulsar_proto.BaseCommand) {
@@ -47,12 +49,22 @@ func (c *Base) marshalPayload() (size int, data []byte, err error) {
 		return
 	}
 
-	payload := []byte(c.payload)
-	payloadSize := len(payload)
+	var payload []byte
+	if c.hasBatchMessage {
+		// TODO: compression process
+		payload, err = MakeBatchMessagePayload(c.batchMessage)
+		if err != nil {
+			err = errors.Wrap(err, "failed to make batch message payload")
+			return
+		}
+	} else {
+		payload = []byte(c.payload)
+	}
 
 	metaAndPayload := append(metaData, payload...)
 	checksum := CalculateChecksum(metaAndPayload)
 
+	payloadSize := len(payload)
 	size = cmdSize + FrameMagicAndChecksumSize + metaSize + payloadSize
 	data = append(cmdData, FrameMagicNumber...)
 	data = append(data, checksum...)
@@ -339,6 +351,15 @@ func (c *Base) SetMetadata(
 	c.payload = payload
 }
 
+func (c *Base) SetMetadataWithBatchMessage(
+	meta *pulsar_proto.MessageMetadata,
+	batchMessage BatchMessage,
+) {
+	c.meta = meta
+	c.batchMessage = batchMessage
+	c.hasBatchMessage = true
+}
+
 func NewBaseWithType(typ *pulsar_proto.BaseCommand_Type) (c *Base) {
 	c = NewBase()
 	if err := c.SetType(typ); err != nil {
@@ -351,13 +372,18 @@ func NewBaseWithCommand(
 	msg proto.Message,
 	meta *pulsar_proto.MessageMetadata,
 	payload string,
+	batchMessage BatchMessage,
 ) (c *Base) {
 	c = NewBase()
 	if err := c.SetCommand(msg); err != nil {
 		panic(err)
 	}
 	if meta != nil {
-		c.SetMetadata(meta, payload)
+		if meta.NumMessagesInBatch != nil && *meta.NumMessagesInBatch > 1 {
+			c.SetMetadataWithBatchMessage(meta, batchMessage)
+		} else {
+			c.SetMetadata(meta, payload)
+		}
 	}
 	return
 }
@@ -366,8 +392,9 @@ func NewMarshaledBase(
 	msg proto.Message,
 	meta *pulsar_proto.MessageMetadata,
 	payload string,
+	batchMessage BatchMessage,
 ) (data []byte, err error) {
-	cmd := NewBaseWithCommand(msg, meta, payload)
+	cmd := NewBaseWithCommand(msg, meta, payload, batchMessage)
 	data, err = cmd.Marshal()
 	if err != nil {
 		err = errors.Wrap(err, "failed to marshal command")

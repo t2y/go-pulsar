@@ -40,9 +40,10 @@ var ( // Errors
 )
 
 type Request struct {
-	Message proto.Message
-	Meta    *pulsar_proto.MessageMetadata
-	Payload string
+	Message      proto.Message
+	Meta         *pulsar_proto.MessageMetadata
+	Payload      string
+	BatchMessage command.BatchMessage
 }
 
 type Response struct {
@@ -96,7 +97,9 @@ func (ac *AsyncTcpConn) writeLoop() {
 			return
 		}
 
-		data, err := command.NewMarshaledBase(r.Message, r.Meta, r.Payload)
+		data, err := command.NewMarshaledBase(
+			r.Message, r.Meta, r.Payload, r.BatchMessage,
+		)
 		if err != nil {
 			ac.ech <- errors.Wrap(err, "failed to marshal message")
 			continue
@@ -123,21 +126,31 @@ func (ac *AsyncTcpConn) readFrame(size int64) (frame *bytes.Buffer, err error) {
 }
 
 func (ac *AsyncTcpConn) read() (frame *command.Frame, err error) {
-	// there are 2 framing formats.
-	//
-	// 1. simple:
-	//
-	//	  [TOTAL_SIZE] [CMD_SIZE] [CMD]
-	//
-	// 2. payload:
-	//
-	//    [TOTAL_SIZE] [CMD_SIZE][CMD] [MAGIC_NUMBER][CHECKSUM]
-	//	  [METADATA_SIZE][METADATA] [PAYLOAD]
-	//
-	// note: it may receive without checksum for backward compatibility
-	// https://github.com/yahoo/pulsar/issues/428
-	//
-	//	  [TOTAL_SIZE] [CMD_SIZE][CMD] [METADATA_SIZE][METADATA] [PAYLOAD]
+	/* there are 2 framing formats.
+
+	https://github.com/yahoo/pulsar/blob/master/docs/BinaryProtocol.md
+
+	1. simple:
+
+		[TOTAL_SIZE] [CMD_SIZE] [CMD]
+
+	2. payload:
+
+		[TOTAL_SIZE] [CMD_SIZE][CMD] [MAGIC_NUMBER][CHECKSUM]
+		[METADATA_SIZE][METADATA] [PAYLOAD]
+
+	note: it may receive without checksum for backward compatibility
+	https://github.com/yahoo/pulsar/issues/428
+
+		[TOTAL_SIZE] [CMD_SIZE][CMD] [METADATA_SIZE][METADATA] [PAYLOAD]
+
+	2-1. payload with batch message:
+
+		the payload can be contained multiple entries with its individual metadata,
+		defined by SingleMessageMetadata object
+
+		[MD_SIZE_1] [MD_1] [PAYLOAD_1] [MD_SIZE_2] [MD_2] [PAYLOAD_2] ...
+	*/
 
 	ac.readFrameMutex.Lock()
 	defer ac.readFrameMutex.Unlock()
