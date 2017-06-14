@@ -29,7 +29,7 @@ type Options struct {
 	Properties []string `long:"properties" env:"PULSAR_PROPERTIES" description:"properties to produce. e.g) key1:value1,key2:value2"`
 
 	// for consumer
-	NumMessages      int    `long:"numMessages" env:"PULSAR_NUM_MESSAGES" description:"number of messages to consume"`
+	NumMessages      int    `long:"numMessages" env:"PULSAR_NUM_MESSAGES" default:"1" description:"number of messages to consume"`
 	SubscriptionName string `long:"subscriptionName" env:"PULSAR_SUBSCRIPTION_NAME" description:"subscription name"`
 	SubscriptionType string `long:"subscriptionType" env:"PULSAR_SUBSCRIPTION_TYPE" default:"exclusive" description:"subscription type: exclusive, shared, failover"`
 
