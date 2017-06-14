@@ -6,38 +6,6 @@ import (
 
 type BatchMessage map[string]*pulsar_proto.SingleMessageMetadata
 
-type Message struct {
-	cmd          *pulsar_proto.CommandMessage
-	meta         *pulsar_proto.MessageMetadata
-	body         string
-	batchMessage BatchMessage
-}
-
-func (m Message) GetMessageId() (data *pulsar_proto.MessageIdData) {
-	data = m.cmd.GetMessageId()
-	return
-}
-
-func (m Message) GetBody() (body string) {
-	body = m.body
-	return
-}
-
-func NewMessage(
-	cmd *pulsar_proto.CommandMessage,
-	meta *pulsar_proto.MessageMetadata,
-	body string,
-	batchMessage BatchMessage,
-) (msg *Message) {
-	msg = &Message{
-		cmd:          cmd,
-		meta:         meta,
-		body:         body,
-		batchMessage: batchMessage,
-	}
-	return
-}
-
 func NewMessageIdData(
 	ledgerId, entryId *uint64, partition, batchIndex *int32,
 ) (data *pulsar_proto.MessageIdData) {

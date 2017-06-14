@@ -5,7 +5,6 @@ import (
 	"github.com/golang/protobuf/proto"
 	"github.com/pkg/errors"
 
-	"github.com/t2y/go-pulsar/proto/command"
 	pulsar_proto "github.com/t2y/go-pulsar/proto/pb"
 )
 
@@ -14,7 +13,9 @@ type Consumer struct {
 }
 
 func (c *Consumer) Subscribe(
-	topic, subscription, subType string, consumerId, requestId uint64,
+	topic, subscription string,
+	subType pulsar_proto.CommandSubscribe_SubType,
+	consumerId, requestId uint64,
 ) (err error) {
 	if err = c.SetLookupTopicConnection(topic, requestId, false); err != nil {
 		err = errors.Wrap(err, "failed to set lookup topic connection")
@@ -24,7 +25,7 @@ func (c *Consumer) Subscribe(
 	sub := &pulsar_proto.CommandSubscribe{
 		Topic:        proto.String(topic),
 		Subscription: proto.String(subscription),
-		SubType:      pulsar_proto.CommandSubscribe_Shared.Enum(),
+		SubType:      subType.Enum(),
 		ConsumerId:   proto.Uint64(consumerId),
 		RequestId:    proto.Uint64(requestId),
 	}
@@ -57,7 +58,7 @@ func (c *Consumer) Flow(
 	return
 }
 
-func (c *Consumer) ReceiveMessage() (msg *command.Message, err error) {
+func (c *Consumer) ReceiveMessage() (msg *Message, err error) {
 	res, err := c.conn.Receive()
 	if err != nil {
 		err = errors.Wrap(err, "failed to receive message command")
@@ -65,7 +66,7 @@ func (c *Consumer) ReceiveMessage() (msg *command.Message, err error) {
 	}
 
 	cmd := res.BaseCommand.GetRawCommand().GetMessage()
-	msg = command.NewMessage(cmd, res.Meta, res.Payload, res.BatchMessage)
+	msg = NewMessage(cmd, res.Meta, res.Payload, res.BatchMessage)
 
 	log.WithFields(log.Fields{
 		"message":      cmd,

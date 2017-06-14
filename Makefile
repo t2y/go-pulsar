@@ -41,11 +41,11 @@ deps:
 .PHONY: build
 build:
 	@mkdir -p bin
-	go build -o ./bin/pcli ./cmd/pcli
+	go build -o ./bin/pulsar-client ./cli/pulsar-client
 
 .PHONY: clean
 clean:
-	rm -f .bin/pcli
+	rm -f .bin/pulsar-client
 
 .PHONY: test
 test:
