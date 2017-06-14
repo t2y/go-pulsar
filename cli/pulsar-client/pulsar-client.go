@@ -207,14 +207,14 @@ func receiveSubscribeMessage(
 			properties := single.GetProperties()
 			keyValues := pulsar.ConvertPropertiesToKeyValues(properties)
 			log.WithFields(log.Fields{
-				"message":   body,
-				"key-value": keyValues,
+				"message":    body,
+				"properties": keyValues,
 			}).Info("messages successfully consumed")
 		}
 	} else {
 		log.WithFields(log.Fields{
-			"message":   msg.GetBody(),
-			"key-value": msg.GetKeyValues(),
+			"message":    msg.GetBody(),
+			"properties": msg.GetKeyValues(),
 		}).Info("messages successfully consumed")
 	}
 }
