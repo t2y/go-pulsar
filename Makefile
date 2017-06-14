@@ -13,7 +13,7 @@ all: build
 
 _gen:
 	mkdir -p ${PULSAR_API_DIR}
-	#curl -L ${PULSAR_API_URL} -o ${PULSAR_API_PROTO_PATH}
+	curl -L ${PULSAR_API_URL} -o ${PULSAR_API_PROTO_PATH}
 	protoc --version
 
 install-pb:
