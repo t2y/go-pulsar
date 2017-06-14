@@ -47,10 +47,11 @@ type Request struct {
 }
 
 type Response struct {
-	BaseCommand *command.Base
-	Meta        *pulsar_proto.MessageMetadata
-	Payload     string
-	Error       error
+	BaseCommand  *command.Base
+	Meta         *pulsar_proto.MessageMetadata
+	Payload      string
+	BatchMessage command.BatchMessage
+	Error        error
 }
 
 type Conn interface {
@@ -229,14 +230,21 @@ func (ac *AsyncTcpConn) decodeFrame(frame *command.Frame) (response *Response) {
 
 	response = &Response{BaseCommand: base}
 	if frame.HasPayload() {
-		meta, payload, err := base.UnmarshalMeta(frame.Metadata, frame.Payload)
+		meta, err := base.UnmarshalMeta(frame.Metadata)
 		if err != nil {
-			err = errors.Wrap(err, "failed to unmarshal meta")
-			return &Response{Error: err}
+			response.Error = errors.Wrap(err, "failed to unmarshal meta")
+			return
+		}
+
+		payload, batch, err := base.UnmarshalPayload(meta, frame.Payload)
+		if err != nil {
+			response.Error = errors.Wrap(err, "failed to unmarshal payload")
+			return
 		}
 
 		response.Meta = meta
 		response.Payload = payload
+		response.BatchMessage = batch
 	}
 	return
 }
@@ -366,9 +374,10 @@ func (ac *AsyncTcpConn) Receive() (response *Response, err error) {
 	err = response.Error
 	if err == nil {
 		log.WithFields(log.Fields{
-			"base":    response.BaseCommand.GetRawCommand(),
-			"meta":    response.Meta,
-			"payload": response.Payload,
+			"base":         response.BaseCommand.GetRawCommand(),
+			"meta":         response.Meta,
+			"payload":      response.Payload,
+			"batchMessage": response.BatchMessage,
 		}).Debug("receive in AsyncTcpConn")
 	}
 	return

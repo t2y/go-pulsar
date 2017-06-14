@@ -7,6 +7,8 @@ import (
 
 	"github.com/golang/protobuf/proto"
 	"github.com/pkg/errors"
+
+	pulsar_proto "github.com/t2y/go-pulsar/proto/pb"
 )
 
 func NewSizeFrame(size int) (frame []byte, err error) {
@@ -39,6 +41,36 @@ func MarshalMessage(msg proto.Message) (
 
 	size = msgLength + int(FrameSizeFieldSize)
 	data = append(sizeFrame, msgFrame...)
+	return
+}
+
+func UnmarshalBatchMessagePayload(
+	numMessages int32, payloadBytes []byte,
+) (batchMessage BatchMessage, err error) {
+	batchMessage = make(BatchMessage, numMessages)
+
+	var i int32
+	boundary := 0
+	for i = 0; i < numMessages; i++ {
+		metadataSizePos := boundary + FrameMetadataFieldSize
+		singleMetaSize := binary.BigEndian.Uint32(payloadBytes[boundary:metadataSizePos])
+
+		singleMetaPos := metadataSizePos + int(singleMetaSize)
+		singleMetaBytes := payloadBytes[metadataSizePos:singleMetaPos]
+		singleMeta := new(pulsar_proto.SingleMessageMetadata)
+		err = proto.Unmarshal(singleMetaBytes, singleMeta)
+		if err != nil {
+			err = errors.Wrap(err, "failed to proto.Unmarshal single meta data")
+			return
+		}
+
+		singlePayloadSize := singleMeta.GetPayloadSize()
+		singlePayloadPos := singleMetaPos + int(singlePayloadSize)
+		singlePayload := string(payloadBytes[singleMetaPos:singlePayloadPos])
+
+		batchMessage[singlePayload] = singleMeta
+		boundary = singlePayloadPos
+	}
 	return
 }
 

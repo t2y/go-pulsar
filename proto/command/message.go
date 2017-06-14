@@ -7,9 +7,10 @@ import (
 type BatchMessage map[string]*pulsar_proto.SingleMessageMetadata
 
 type Message struct {
-	cmd  *pulsar_proto.CommandMessage
-	meta *pulsar_proto.MessageMetadata
-	body string
+	cmd          *pulsar_proto.CommandMessage
+	meta         *pulsar_proto.MessageMetadata
+	body         string
+	batchMessage BatchMessage
 }
 
 func (m Message) GetMessageId() (data *pulsar_proto.MessageIdData) {
@@ -26,11 +27,13 @@ func NewMessage(
 	cmd *pulsar_proto.CommandMessage,
 	meta *pulsar_proto.MessageMetadata,
 	body string,
+	batchMessage BatchMessage,
 ) (msg *Message) {
 	msg = &Message{
-		cmd:  cmd,
-		meta: meta,
-		body: body,
+		cmd:          cmd,
+		meta:         meta,
+		body:         body,
+		batchMessage: batchMessage,
 	}
 	return
 }

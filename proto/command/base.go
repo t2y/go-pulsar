@@ -163,18 +163,37 @@ func (c *Base) Unmarshal(buf []byte) (msg proto.Message, err error) {
 }
 
 func (c *Base) UnmarshalMeta(
-	metaBytes []byte, payloadBytes []byte,
-) (meta *pulsar_proto.MessageMetadata, payload string, err error) {
+	metaBytes []byte,
+) (meta *pulsar_proto.MessageMetadata, err error) {
 	c.meta = new(pulsar_proto.MessageMetadata)
 	err = proto.Unmarshal(metaBytes, c.meta)
 	if err != nil {
 		err = errors.Wrap(err, "failed to proto.Unmarshal meta data")
 		return
 	}
-	c.payload = string(payloadBytes[:])
 
 	meta = c.meta
-	payload = c.payload
+	return
+}
+
+func (c *Base) UnmarshalPayload(
+	meta *pulsar_proto.MessageMetadata,
+	payloadBytes []byte,
+) (payload string, batchMessage BatchMessage, err error) {
+	numMessages := meta.GetNumMessagesInBatch()
+	if numMessages > 1 {
+		// TODO: extraction process
+		c.batchMessage, err = UnmarshalBatchMessagePayload(numMessages, payloadBytes)
+		if err != nil {
+			err = errors.Wrap(err, "failed to unmarshal batch message")
+			return
+		}
+		batchMessage = c.batchMessage
+	} else {
+		c.payload = string(payloadBytes[:])
+		payload = c.payload
+	}
+
 	return
 }
 
@@ -379,7 +398,7 @@ func NewBaseWithCommand(
 		panic(err)
 	}
 	if meta != nil {
-		if meta.NumMessagesInBatch != nil && *meta.NumMessagesInBatch > 1 {
+		if meta.GetNumMessagesInBatch() > 1 {
 			c.SetMetadataWithBatchMessage(meta, batchMessage)
 		} else {
 			c.SetMetadata(meta, payload)

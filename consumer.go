@@ -65,12 +65,13 @@ func (c *Consumer) ReceiveMessage() (msg *command.Message, err error) {
 	}
 
 	cmd := res.BaseCommand.GetRawCommand().GetMessage()
-	msg = command.NewMessage(cmd, res.Meta, res.Payload)
+	msg = command.NewMessage(cmd, res.Meta, res.Payload, res.BatchMessage)
 
 	log.WithFields(log.Fields{
-		"message": cmd,
-		"meta":    res.Meta,
-		"payload": res.Payload,
+		"message":      cmd,
+		"meta":         res.Meta,
+		"payload":      res.Payload,
+		"batchMessage": res.BatchMessage,
 	}).Debug("receive message")
 	return
 }
