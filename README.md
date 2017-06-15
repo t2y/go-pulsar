@@ -131,3 +131,6 @@ INFO[2017-06-15T08:50:33.467806336+09:00] read and parse ini file               
 INFO[2017-06-15T08:50:34.515306354+09:00] messages successfully consumed                key-value=[] message="Hello Pulsar"
 ```
 
+## License
+
+Licensed under the Apache License, Version 2.0: http://www.apache.org/licenses/LICENSE-2.0
