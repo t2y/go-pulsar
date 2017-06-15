@@ -11,6 +11,14 @@ go-pulsar is a [pulsar](https://github.com/yahoo/pulsar) client library.
 
 go-pulsar is still under heavy development. Some functionality are known to be broken, missing or incomplete. The interface may also change.
 
+### TODO
+
+* [athenz](https://github.com/yahoo/athenz) authentication
+* partitioned topics functions
+* pyaload compression
+* unimplemented commands
+* error handling
+
 
 ## How to build
 
