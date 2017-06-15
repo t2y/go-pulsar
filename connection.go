@@ -32,7 +32,7 @@ const (
 	ConnectionStateReady
 )
 
-var ( // Errors
+var (
 	ErrNoConnection  = errors.New("need to establish a connection")
 	ErrSentConnect   = errors.New("connecting now, wait for a couple of seconds")
 	ErrHasConnection = errors.New("connection has already established")

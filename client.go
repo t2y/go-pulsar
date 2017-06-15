@@ -21,6 +21,13 @@ const (
 	DefaultProtocolVersion = 7
 )
 
+var (
+	ErrKeepAlive                 = errors.New("failed to receive pong command")
+	ErrLookupTopicResponseFailed = errors.New(
+		"got failed as response type from lookup topic",
+	)
+)
+
 type PulsarClient struct {
 	Conn
 	conn       Conn // own connection for a broker created by topic lookup response
@@ -63,7 +70,7 @@ func (c *PulsarClient) LookupTopicWithConnect(
 	case pulsar_proto.CommandLookupTopicResponse_Connect:
 		// do nothing
 	case pulsar_proto.CommandLookupTopicResponse_Failed:
-		err = errors.New("got failed as response type from lookup topic")
+		err = ErrLookupTopicResponseFailed
 	default:
 		err = errors.Errorf("unknown lookup topic response type: %v", r)
 	}
@@ -134,7 +141,7 @@ func (c *PulsarClient) KeepAlive() (err error) {
 	}
 
 	if res.BaseCommand.GetRawCommand().GetPong() == nil {
-		err = errors.New("failed to receive pong command")
+		err = ErrKeepAlive
 		return
 	}
 
