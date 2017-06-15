@@ -15,7 +15,7 @@ go-pulsar is still under heavy development. Some functionality are known to be b
 
 * [athenz](https://github.com/yahoo/athenz) authentication
 * partitioned topics functions
-* pyaload compression
+* payload compression
 * unimplemented commands
 * error handling
 
