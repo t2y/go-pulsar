@@ -36,7 +36,9 @@ var (
 	ErrNoConnection  = errors.New("need to establish a connection")
 	ErrSentConnect   = errors.New("connecting now, wait for a couple of seconds")
 	ErrHasConnection = errors.New("connection has already established")
-	ErrCloseReacChan = errors.New("read channel has closed")
+	ErrCloseReadChan = errors.New("read channel has closed")
+
+	ErrCloseProducerByBroker = errors.New("producer has closed by broker")
 )
 
 type Request struct {
@@ -58,6 +60,7 @@ type Conn interface {
 	GetID() string
 	GetConfig() *Config
 	GetConnection() Conn
+	GetError() error
 	LookupTopic(*pulsar_proto.CommandLookupTopic,
 	) (*pulsar_proto.CommandLookupTopicResponse, error)
 	Connect(*pulsar_proto.CommandConnect) error
@@ -216,6 +219,10 @@ func (ac *AsyncTcpConn) decodeFrame(frame *command.Frame) (response *Response) {
 	}
 
 	switch t := base.GetType(); *t {
+	case pulsar_proto.BaseCommand_CLOSE_PRODUCER:
+		log.Debug(fmt.Sprintf("%s: received close producer", ac.id))
+		ac.ech <- ErrCloseProducerByBroker
+		return
 	case pulsar_proto.BaseCommand_PING:
 		log.Debug(fmt.Sprintf("%s: received ping", ac.id))
 		ac.conn.SetDeadline(time.Now().Add(ac.config.Timeout))
@@ -367,7 +374,7 @@ func (ac *AsyncTcpConn) Receive() (response *Response, err error) {
 	ac.receiveMutex.Unlock()
 
 	if !ok {
-		err = ErrCloseReacChan
+		err = ErrCloseReadChan
 		return
 	}
 
@@ -398,6 +405,16 @@ func (ac *AsyncTcpConn) Request(r *Request) (response *Response, err error) {
 		return
 	}
 
+	return
+}
+
+func (ac *AsyncTcpConn) GetError() (err error) {
+	select {
+	case err = <-ac.ech:
+		err = errors.Wrap(err, "got an error from error channel")
+	default:
+		// do nothing
+	}
 	return
 }
 
