@@ -39,6 +39,7 @@ var (
 	ErrCloseReadChan = errors.New("read channel has closed")
 
 	ErrCloseProducerByBroker = errors.New("producer has closed by broker")
+	ErrCloseConsumerByBroker = errors.New("consumer has closed by broker")
 )
 
 type Request struct {
@@ -222,6 +223,10 @@ func (ac *AsyncTcpConn) decodeFrame(frame *command.Frame) (response *Response) {
 	case pulsar_proto.BaseCommand_CLOSE_PRODUCER:
 		log.Debug(fmt.Sprintf("%s: received close producer", ac.id))
 		ac.ech <- ErrCloseProducerByBroker
+		return
+	case pulsar_proto.BaseCommand_CLOSE_CONSUMER:
+		log.Debug(fmt.Sprintf("%s: received close consumer", ac.id))
+		ac.ech <- ErrCloseConsumerByBroker
 		return
 	case pulsar_proto.BaseCommand_PING:
 		log.Debug(fmt.Sprintf("%s: received ping", ac.id))
