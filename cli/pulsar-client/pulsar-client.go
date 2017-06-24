@@ -179,8 +179,19 @@ func runProduceCommand(opts *pulsar.Options, client *pulsar.PulsarClient) {
 	}
 
 	_, err = producer.ReceiveSendReceipt()
+	if err != nil {
+		log.WithFields(log.Fields{
+			"err": err,
+		}).Fatal("Failed to receive sendReceipt")
+	}
+
 	producer.CloseProducer(producerId, requestId)
-	client.ReceiveSuccess()
+	_, err = client.ReceiveSuccess()
+	if err != nil {
+		log.WithFields(log.Fields{
+			"err": err,
+		}).Fatal("Failed to receive success")
+	}
 
 	log.WithFields(log.Fields{
 		"messages":   opts.Messages,
@@ -195,7 +206,9 @@ func receiveSubscribeMessage(
 
 	msg, err := consumer.ReceiveMessage()
 	if err != nil {
-		log.Fatal(err)
+		log.WithFields(log.Fields{
+			"err": err,
+		}).Fatal("failed to receive message in receiveSubscribeMessage")
 	}
 
 	idData := msg.GetMessageId()
@@ -232,9 +245,14 @@ func runConsumeCommand(opts *pulsar.Options, client *pulsar.PulsarClient) {
 	subsTypeValue := pulsar_proto.CommandSubscribe_SubType_value[subsTypeName]
 	subsType := pulsar_proto.CommandSubscribe_SubType(subsTypeValue)
 
-	consumer.Subscribe(
+	err := consumer.Subscribe(
 		opts.Topic, opts.SubscriptionName, subsType, consumerId, requestId,
 	)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"err": err,
+		}).Fatal("Failed to subscribe")
+	}
 
 	success, err := client.ReceiveSuccess()
 	if err != nil {

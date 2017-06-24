@@ -146,7 +146,7 @@ func (p *Producer) ReceiveSendReceipt() (
 
 func (p *Producer) CloseProducer(
 	producerId, requestId uint64,
-) (success *pulsar_proto.CommandSuccess, err error) {
+) (err error) {
 	close := &pulsar_proto.CommandCloseProducer{
 		ProducerId: proto.Uint64(producerId),
 		RequestId:  proto.Uint64(requestId),
