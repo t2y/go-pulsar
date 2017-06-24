@@ -1,8 +1,8 @@
 # go-pulsar
 
-go-pulsar is a [pulsar](https://github.com/yahoo/pulsar) client library.
+go-pulsar is a [pulsar](https://github.com/apache/incubator-pulsar) client library.
 
-* [Pulsar Documentation](https://github.com/yahoo/pulsar/blob/master/docs/Documentation.md)
+* [Pulsar Documentation](https://github.com/apache/incubator-pulsar/blob/master/docs/Documentation.md)
 
 
 ## Development Status
@@ -24,7 +24,7 @@ go-pulsar is still under heavy development. Some functionality are known to be b
 
 ### pulsar-client
 
-pulsar-client is a cli tool to use go-pulsar library. It's like Java's [Pulsar client tool](https://github.com/yahoo/pulsar/blob/master/docs/AdminTools.md#pulsar-client-tool).
+pulsar-client is a cli tool to use go-pulsar library. It's like Java's [Pulsar client tool](https://github.com/apache/incubator-pulsar/blob/master/docs/AdminTools.md#pulsar-client-tool).
 
 ```bash
 $ mkdir work && cd work
@@ -78,9 +78,9 @@ max_connection_num = 20
 
 pulsar protocol is defined using [Protocol Buffers](https://developers.google.com/protocol-buffers/).
 
-* [Pulsar binary protocol specification](https://github.com/yahoo/pulsar/blob/master/docs/BinaryProtocol.md)
+* [Pulsar binary protocol specification](https://github.com/apache/incubator-pulsar/blob/master/docs/BinaryProtocol.md)
 
-go-pulsar also uses [PulsarApi.proto](https://github.com/yahoo/pulsar/blob/master/pulsar-common/src/main/proto/PulsarApi.proto) and generates go source code: [PulsarApi.pb.go](https://github.com/t2y/go-pulsar/blob/master/proto/pb/PulsarApi.pb.go).
+go-pulsar also uses [PulsarApi.proto](https://github.com/apache/incubator-pulsar/blob/master/pulsar-common/src/main/proto/PulsarApi.proto) and generates go source code: [PulsarApi.pb.go](https://github.com/t2y/go-pulsar/blob/master/proto/pb/PulsarApi.pb.go).
 
 First of all, install *protoc* command for your platform. For example, use [Homebrew](https://brew.sh/) on macOS.
 
@@ -108,7 +108,7 @@ The following files are updated
 Build and install pulsar server.
 
 ```bash
-$ git clone https://github.com/yahoo/pulsar.git
+$ git clone https://github.com/apache/incubator-pulsar.git
 $ cd pulsar
 $ mvn install -DskipTests
 ```
@@ -119,7 +119,7 @@ Start up a standalone pulsar server for development.
 $ ./bin/pulsar standalone
 ```
 
-* [Getting started with Pulsar](https://github.com/yahoo/pulsar/blob/master/docs/GettingStarted.md)
+* [Getting started with Pulsar](https://github.com/apache/incubator-pulsar/blob/master/docs/GettingStarted.md)
 
 ### Producer
 
