@@ -18,7 +18,7 @@ const (
 
 const (
 	ClientName             = "go-pulsar"
-	DefaultProtocolVersion = 7
+	DefaultProtocolVersion = 9
 )
 
 var (
