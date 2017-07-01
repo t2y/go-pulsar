@@ -230,6 +230,10 @@ func (ac *AsyncTcpConn) decodeFrame(frame *command.Frame) (response *Response) {
 		log.Debug(fmt.Sprintf("%s: received close consumer", ac.id))
 		ac.cch <- base.GetRawCommand()
 		return
+	case pulsar_proto.BaseCommand_REACHED_END_OF_TOPIC:
+		log.Debug(fmt.Sprintf("%s: received reached end of topic", ac.id))
+		ac.cch <- base.GetRawCommand()
+		return
 	case pulsar_proto.BaseCommand_PING:
 		log.Debug(fmt.Sprintf("%s: received ping", ac.id))
 		ac.conn.SetDeadline(time.Now().Add(ac.config.Timeout))

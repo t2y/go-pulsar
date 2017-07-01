@@ -250,6 +250,8 @@ func (c *Base) SetType(typ *pulsar_proto.BaseCommand_Type) (err error) {
 		c.base.ConsumerStats = new(pulsar_proto.CommandConsumerStats)
 	case pulsar_proto.BaseCommand_CONSUMER_STATS_RESPONSE:
 		c.base.ConsumerStatsResponse = new(pulsar_proto.CommandConsumerStatsResponse)
+	case pulsar_proto.BaseCommand_REACHED_END_OF_TOPIC:
+		c.base.ReachedEndOfTopic = new(pulsar_proto.CommandReachedEndOfTopic)
 	default:
 		err = errors.Errorf("unknown command type: %v", typ)
 	}
@@ -355,6 +357,9 @@ func (c *Base) SetCommand(msg proto.Message) (err error) {
 	case *pulsar_proto.CommandConsumerStatsResponse:
 		c.base.Type = pulsar_proto.BaseCommand_CONSUMER_STATS_RESPONSE.Enum()
 		c.base.ConsumerStatsResponse = t
+	case *pulsar_proto.CommandReachedEndOfTopic:
+		c.base.Type = pulsar_proto.BaseCommand_REACHED_END_OF_TOPIC.Enum()
+		c.base.ReachedEndOfTopic = t
 	default:
 		err = errors.Errorf("unknown command message type: %v", t)
 	}
