@@ -99,6 +99,30 @@ func (c *Consumer) SendAck(
 	return
 }
 
+func (c *Consumer) SendRedeliverUnacknowledgedMessages(
+	subType pulsar_proto.CommandSubscribe_SubType,
+	consumerId uint64,
+	idsList []*pulsar_proto.MessageIdData,
+) (err error) {
+	redeliver := &pulsar_proto.CommandRedeliverUnacknowledgedMessages{
+		ConsumerId: proto.Uint64(consumerId),
+	}
+	if subType == pulsar_proto.CommandSubscribe_Shared && len(idsList) > 0 {
+		// TODO: investigate message ids list behavior
+		redeliver.MessageIds = idsList
+	}
+
+	err = c.Send(&Request{Message: redeliver})
+	if err != nil {
+		msg := "failed to send redeliver unacknowledged messages command"
+		err = errors.Wrap(err, msg)
+		return
+	}
+
+	log.Debug("sent redeliver")
+	return
+}
+
 func (c *Consumer) CloseConsumer(
 	consumerId, requestId uint64,
 ) (err error) {
