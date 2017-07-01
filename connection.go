@@ -135,7 +135,7 @@ func (ac *AsyncTcpConn) readFrame(size int64) (frame *bytes.Buffer, err error) {
 func (ac *AsyncTcpConn) read() (frame *command.Frame, err error) {
 	/* there are 2 framing formats.
 
-	https://github.com/yahoo/pulsar/blob/master/docs/BinaryProtocol.md
+	https://github.com/apache/incubator-pulsar/blob/master/docs/BinaryProtocol.md
 
 	1. simple:
 
@@ -147,7 +147,7 @@ func (ac *AsyncTcpConn) read() (frame *command.Frame, err error) {
 		[METADATA_SIZE][METADATA] [PAYLOAD]
 
 	note: it may receive without checksum for backward compatibility
-	https://github.com/yahoo/pulsar/issues/428
+	https://github.com/apache/incubator-pulsar/issues/428
 
 		[TOTAL_SIZE] [CMD_SIZE][CMD] [METADATA_SIZE][METADATA] [PAYLOAD]
 
