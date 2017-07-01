@@ -18,8 +18,9 @@ import (
 )
 
 const (
-	writeChanSize = 32
-	readChanSize  = 32
+	writeChanSize   = 32
+	readChanSize    = 32
+	commandChanSize = 32
 
 	defaultWaitConnectedSecond = 3
 )
@@ -61,7 +62,7 @@ type Conn interface {
 	GetID() string
 	GetConfig() *Config
 	GetConnection() Conn
-	GetError() error
+	GetCommandFromBroker() *pulsar_proto.BaseCommand
 	LookupTopic(*pulsar_proto.CommandLookupTopic,
 	) (*pulsar_proto.CommandLookupTopicResponse, error)
 	Connect(*pulsar_proto.CommandConnect) error
@@ -78,11 +79,12 @@ type AsyncTcpConn struct {
 	wch chan *Request
 	ech chan error
 	rch chan *Response
+	cch chan *pulsar_proto.BaseCommand
 
-	readFrameMutex sync.Mutex
-	receiveMutex   sync.Mutex
-	conn           *net.TCPConn
-	state          ConnectionState
+	readFrameMutex   sync.Mutex
+	sendReceiveMutex sync.Mutex
+	conn             *net.TCPConn
+	state            ConnectionState
 }
 
 type AsyncTcpConns []*AsyncTcpConn
@@ -222,11 +224,11 @@ func (ac *AsyncTcpConn) decodeFrame(frame *command.Frame) (response *Response) {
 	switch t := base.GetType(); *t {
 	case pulsar_proto.BaseCommand_CLOSE_PRODUCER:
 		log.Debug(fmt.Sprintf("%s: received close producer", ac.id))
-		ac.ech <- ErrCloseProducerByBroker
+		ac.cch <- base.GetRawCommand()
 		return
 	case pulsar_proto.BaseCommand_CLOSE_CONSUMER:
 		log.Debug(fmt.Sprintf("%s: received close consumer", ac.id))
-		ac.ech <- ErrCloseConsumerByBroker
+		ac.cch <- base.GetRawCommand()
 		return
 	case pulsar_proto.BaseCommand_PING:
 		log.Debug(fmt.Sprintf("%s: received ping", ac.id))
@@ -235,9 +237,9 @@ func (ac *AsyncTcpConn) decodeFrame(frame *command.Frame) (response *Response) {
 		log.Debug(fmt.Sprintf("%s: send pong", ac.id))
 		return
 	case pulsar_proto.BaseCommand_CONNECTED:
-		ac.receiveMutex.Lock()
+		ac.sendReceiveMutex.Lock()
 		ac.state = ConnectionStateReady
-		ac.receiveMutex.Unlock()
+		ac.sendReceiveMutex.Unlock()
 	}
 
 	response = &Response{BaseCommand: base}
@@ -340,9 +342,9 @@ func (ac *AsyncTcpConn) Connect(msg *pulsar_proto.CommandConnect) (err error) {
 	ac.wch <- request
 	err, _ = <-ac.ech
 	if err == nil {
-		ac.receiveMutex.Lock()
+		ac.sendReceiveMutex.Lock()
 		ac.state = ConnectionStateSentConnectFrame
-		ac.receiveMutex.Unlock()
+		ac.sendReceiveMutex.Unlock()
 	}
 	return
 }
@@ -353,8 +355,10 @@ func (ac *AsyncTcpConn) Send(r *Request) (err error) {
 		return
 	}
 
+	ac.sendReceiveMutex.Lock()
 	ac.wch <- r
 	err, _ = <-ac.ech
+	ac.sendReceiveMutex.Unlock()
 	return
 }
 
@@ -374,9 +378,9 @@ func (ac *AsyncTcpConn) Receive() (response *Response, err error) {
 		}
 	}
 
-	ac.receiveMutex.Lock()
+	ac.sendReceiveMutex.Lock()
 	response, ok := <-ac.rch
-	ac.receiveMutex.Unlock()
+	ac.sendReceiveMutex.Unlock()
 
 	if !ok {
 		err = ErrCloseReadChan
@@ -396,14 +400,12 @@ func (ac *AsyncTcpConn) Receive() (response *Response, err error) {
 }
 
 func (ac *AsyncTcpConn) Request(r *Request) (response *Response, err error) {
-	ac.receiveMutex.Lock()
 	err = ac.Send(r)
 	if err != nil {
 		err = errors.Wrap(err, "failed to send in request")
 		return
 	}
 
-	ac.receiveMutex.Unlock()
 	response, err = ac.Receive()
 	if err != nil {
 		err = errors.Wrap(err, "failed to receive in request")
@@ -413,10 +415,9 @@ func (ac *AsyncTcpConn) Request(r *Request) (response *Response, err error) {
 	return
 }
 
-func (ac *AsyncTcpConn) GetError() (err error) {
+func (ac *AsyncTcpConn) GetCommandFromBroker() (cmd *pulsar_proto.BaseCommand) {
 	select {
-	case err = <-ac.ech:
-		err = errors.Wrap(err, "got an error from error channel")
+	case cmd = <-ac.cch:
 	default:
 		// do nothing
 	}
@@ -424,13 +425,14 @@ func (ac *AsyncTcpConn) GetError() (err error) {
 }
 
 func (ac *AsyncTcpConn) Close() {
-	ac.receiveMutex.Lock()
-	defer ac.receiveMutex.Unlock()
+	ac.sendReceiveMutex.Lock()
+	defer ac.sendReceiveMutex.Unlock()
 
 	ac.conn.Close()
 	close(ac.wch)
 	close(ac.ech)
 	close(ac.rch)
+	close(ac.cch)
 	ac.rch = nil
 }
 
@@ -448,6 +450,7 @@ func NewAsyncTcpConn(c *Config, tc *net.TCPConn) (ac *AsyncTcpConn) {
 		wch:    make(chan *Request, writeChanSize),
 		ech:    make(chan error, writeChanSize),
 		rch:    make(chan *Response, readChanSize),
+		cch:    make(chan *pulsar_proto.BaseCommand, commandChanSize),
 	}
 	ac.Run()
 	return
