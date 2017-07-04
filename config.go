@@ -1,13 +1,19 @@
 package pulsar
 
 import (
+	"encoding/json"
+	"fmt"
+	"io/ioutil"
 	"net"
 	"net/url"
+	"os"
 	"time"
 
 	log "github.com/Sirupsen/logrus"
 	"github.com/pkg/errors"
 	"gopkg.in/ini.v1"
+
+	"github.com/t2y/go-pulsar/internal/parse"
 )
 
 const (
@@ -17,14 +23,23 @@ const (
 type IniConfig struct {
 	LogLevelString string `ini:"log_level"`
 
-	URLString        string        `ini:"url"`
+	ServiceURLString string        `ini:"service_url"`
 	Timeout          time.Duration `ini:"timeout"`
 	MinConnectionNum int           `ini:"min_connection_num"`
 	MaxConnectionNum int           `ini:"max_connection_num"`
 
+	AuthMethod                 string `ini:"auth_method"`
+	AuthParams                 string `ini:"auth_params"`
+	UseTLS                     bool   `ini:"use_tls"`
+	TLSAllowInsecureConnection bool   `ini:"tls_allow_insecure_connection"`
+	TLSTrustCertsFilepath      string `ini:"tls_trust_certs_filepath"`
+	AthenzConf                 string `ini:"athenz_conf"`
+	AthenzAuthHeader           string `ini:"athenz_auth_header"`
+
 	// internal use
-	URL      *url.URL  `ini:"-"`
-	LogLevel log.Level `ini:"-"`
+	ServiceURL   *url.URL      `ini:"-"`
+	LogLevel     log.Level     `ini:"-"`
+	AthenzConfig *AthenzConfig `ini:"-"`
 }
 
 type Config struct {
@@ -35,8 +50,19 @@ type Config struct {
 	MinConnectionNum int
 	MaxConnectionNum int
 
-	URL      *url.URL
-	LogLevel log.Level
+	AuthMethod                 string
+	AuthParams                 map[string]string
+	UseTLS                     bool
+	TLSAllowInsecureConnection bool
+	TLSTrustCertsFilepath      string
+
+	AuthenticationDataProvider AuthenticationDataProvider
+
+	AthenzConfig     *AthenzConfig
+	AthenzAuthHeader string
+
+	ServiceURL *url.URL
+	LogLevel   log.Level
 }
 
 func (c *Config) Copy() (config *Config) {
@@ -48,8 +74,18 @@ func (c *Config) Copy() (config *Config) {
 		Timeout:          c.Timeout,
 		MinConnectionNum: c.MinConnectionNum,
 		MaxConnectionNum: c.MaxConnectionNum,
-		URL:              nil,
-		LogLevel:         c.LogLevel,
+
+		AuthMethod: c.AuthMethod,
+		AuthParams: c.AuthParams,
+		UseTLS:     c.UseTLS,
+		TLSAllowInsecureConnection: c.TLSAllowInsecureConnection,
+		TLSTrustCertsFilepath:      c.TLSTrustCertsFilepath,
+
+		AthenzConfig:     c.AthenzConfig,
+		AthenzAuthHeader: c.AthenzAuthHeader,
+
+		ServiceURL: nil,
+		LogLevel:   c.LogLevel,
 	}
 	return
 }
@@ -67,12 +103,31 @@ func LoadIniFile(path string) (iniConf *IniConfig, err error) {
 		return
 	}
 
-	u, err := url.Parse(iniConf.URLString)
+	u, err := url.Parse(iniConf.ServiceURLString)
 	if err != nil {
 		err = errors.Wrap(err, "failed to parse url")
 		return
 	}
-	iniConf.URL = u
+	iniConf.ServiceURL = u
+
+	if iniConf.UseTLS {
+		if iniConf.TLSTrustCertsFilepath != "" {
+			if _, err = os.Stat(iniConf.TLSTrustCertsFilepath); !os.IsNotExist(err) {
+				path := iniConf.TLSTrustCertsFilepath
+				msg := fmt.Sprintf("not found trust certs file: %s", path)
+				err = errors.Wrap(err, msg)
+				return
+			}
+		}
+	}
+
+	if iniConf.AthenzConf != "" {
+		if _, err = os.Stat(iniConf.AthenzConf); !os.IsNotExist(err) {
+			msg := fmt.Sprintf("not found athenz conf: %s", iniConf.AthenzConf)
+			err = errors.Wrap(err, msg)
+			return
+		}
+	}
 
 	level, err := log.ParseLevel(iniConf.LogLevelString)
 	if err != nil {
@@ -90,7 +145,7 @@ func LoadIniFile(path string) (iniConf *IniConfig, err error) {
 }
 
 func NewConfigFromIni(iniConf *IniConfig) (c *Config, err error) {
-	remoteTcpAddr, err := net.ResolveTCPAddr(PROTO_TCP, iniConf.URL.Host)
+	remoteTcpAddr, err := net.ResolveTCPAddr(PROTO_TCP, iniConf.ServiceURL.Host)
 	if err != nil {
 		err = errors.Wrap(err, "failed to resolve remote tcp address")
 		return
@@ -105,6 +160,26 @@ func NewConfigFromIni(iniConf *IniConfig) (c *Config, err error) {
 		maxConnNum = defaultMaxConnNum
 	}
 
+	var authParams map[string]string
+	if iniConf.AuthParams != "" {
+		authParams = parse.ParseAuthParams(iniConf.AuthParams)
+	}
+
+	var athenzConfig AthenzConfig
+	if iniConf.AthenzConf != "" {
+		var contents []byte
+		contents, err = ioutil.ReadFile(iniConf.AthenzConf)
+		if err != nil {
+			err = errors.Wrap(err, "failed to read athenz conf file")
+			return
+		}
+
+		if err = json.Unmarshal(contents, &athenzConfig); err != nil {
+			err = errors.Wrap(err, "failed to unmarshal athenz conf")
+			return
+		}
+	}
+
 	c = &Config{
 		Proto:            PROTO_TCP,
 		LocalAddr:        nil,
@@ -113,8 +188,17 @@ func NewConfigFromIni(iniConf *IniConfig) (c *Config, err error) {
 		MinConnectionNum: minConnNum,
 		MaxConnectionNum: maxConnNum,
 
-		URL:      iniConf.URL,
-		LogLevel: iniConf.LogLevel,
+		AuthMethod: iniConf.AuthMethod,
+		AuthParams: authParams,
+		UseTLS:     iniConf.UseTLS,
+		TLSAllowInsecureConnection: iniConf.TLSAllowInsecureConnection,
+		TLSTrustCertsFilepath:      iniConf.TLSTrustCertsFilepath,
+
+		AthenzConfig:     &athenzConfig,
+		AthenzAuthHeader: iniConf.AthenzAuthHeader,
+
+		ServiceURL: iniConf.ServiceURL,
+		LogLevel:   iniConf.LogLevel,
 	}
 	return
 }
@@ -126,15 +210,31 @@ func NewConfigFromOptions(opts *Options) (c *Config, err error) {
 		LogLevel:  log.InfoLevel,
 	}
 
-	if opts.URL != nil {
+	if opts.ServiceURL != nil {
 		var remoteTcpAddr *net.TCPAddr
-		remoteTcpAddr, err = net.ResolveTCPAddr(PROTO_TCP, opts.URL.Host)
+		remoteTcpAddr, err = net.ResolveTCPAddr(PROTO_TCP, opts.ServiceURL.Host)
 		if err != nil {
 			err = errors.Wrap(err, "failed to resolve remote tcp address")
 			return
 		}
 		c.RemoteAddr = remoteTcpAddr
-		c.URL = opts.URL
+		c.ServiceURL = opts.ServiceURL
+	}
+
+	if opts.AuthMethod != nil {
+		c.AuthMethod = *opts.AuthMethod
+	}
+
+	if opts.AuthParams != nil {
+		c.AuthParams = parse.ParseAuthParams(*opts.AuthParams)
+	}
+
+	if opts.UseTLS != nil {
+		c.UseTLS = *opts.UseTLS
+	}
+
+	if opts.TLSAllowInsecureConnection != nil {
+		c.TLSAllowInsecureConnection = *opts.TLSAllowInsecureConnection
 	}
 
 	if opts.Timeout == nil {

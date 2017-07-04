@@ -8,18 +8,26 @@ import (
 )
 
 const (
+	OptionsAuthMethodAthenz = "athenz"
+)
+
+const (
 	OptionsCommandConsume = "consume"
 	OptionsCommandProduce = "produce"
 )
 
 type Options struct {
 	// common options
-	URLString  *string        `long:"url" env:"PULSAR_URL" description:"pulsar blocker url"`
-	AuthParams *string        `long:"authParams" env:"PULSAR_AUTH_PARAMS" description:"authentication params"`
-	AuthMethod *string        `long:"authMethod" env:"PULSAR_AUTH_METHOD" description:"authentication method"`
-	Conf       *string        `long:"conf" env:"PULSAR_CONF" description:"path to pulsar config file"`
-	Verbose    bool           `long:"verbose" env:"VERBOSE" description:"use verbose mode"`
-	Timeout    *time.Duration `long:"timeout" env:"PULSAR_TIMEOUT" description:"timeout to communicate with pulsar broker"`
+	ServiceURLString           *string        `long:"serviceUrl" env:"PULSAR_SERVICE_URL" description:"pulsar service url"`
+	AuthMethod                 *string        `long:"authMethod" env:"PULSAR_AUTH_METHOD" description:"authentication method"`
+	AuthParams                 *string        `long:"authParams" env:"PULSAR_AUTH_PARAMS" description:"authentication params"`
+	UseTLS                     *bool          `long:"useTls" env:"USE_TLS" description:"use tls to connect"`
+	TLSAllowInsecureConnection *bool          `long:"tlsAllowInsecureConnection" env:"TLS_ALLOW_INSECURE_CONNECTION" description:"allow insecure tls connection"`
+	AthenzConf                 *string        `long:"athenzConf" env:"PULSAR_ATHENZ_CONF" description:"path to athenz config file"`
+	AthenzAuthHeader           *string        `long:"athenzAuthHeader" env:"PULSAR_ATHENZ_AUTH_HEADER" description:"athenz authentication header"`
+	Conf                       *string        `long:"conf" env:"PULSAR_CONF" description:"path to pulsar config file"`
+	Verbose                    bool           `long:"verbose" env:"VERBOSE" description:"use verbose mode"`
+	Timeout                    *time.Duration `long:"timeout" env:"PULSAR_TIMEOUT" description:"timeout to communicate with pulsar broker"`
 
 	Command *string `long:"command" env:"PULSAR_COMMAND" description:"produce or consume"`
 	Topic   string  `long:"topic" env:"PULSAR_TOPIC" required:"true" description:"topic name"`
@@ -34,18 +42,18 @@ type Options struct {
 	SubscriptionType string `long:"subscriptionType" env:"PULSAR_SUBSCRIPTION_TYPE" default:"exclusive" description:"subscription type: exclusive, shared, failover"`
 
 	// internal use
-	URL *url.URL
+	ServiceURL *url.URL
 }
 
 func InitOptions(opts *Options) (err error) {
-	if opts.URLString != nil {
+	if opts.ServiceURLString != nil {
 		var u *url.URL
-		u, err = url.Parse(*opts.URLString)
+		u, err = url.Parse(*opts.ServiceURLString)
 		if err != nil {
 			err = errors.Wrap(err, "failed to parse url")
 			return
 		}
-		opts.URL = u
+		opts.ServiceURL = u
 	}
 
 	return

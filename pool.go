@@ -38,11 +38,11 @@ type ConnPool struct {
 	maxConnNum int
 
 	mu        sync.Mutex
-	available AsyncTcpConns
-	inUse     map[string]*AsyncTcpConn
+	available AsyncConns
+	inUse     map[string]*AsyncConn
 }
 
-func (p *ConnPool) Get() (c *AsyncTcpConn, err error) {
+func (p *ConnPool) Get() (c *AsyncConn, err error) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
@@ -63,7 +63,7 @@ func (p *ConnPool) Get() (c *AsyncTcpConn, err error) {
 	return
 }
 
-func (p *ConnPool) Put(c *AsyncTcpConn) (err error) {
+func (p *ConnPool) Put(c *AsyncConn) (err error) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
@@ -90,7 +90,7 @@ func (p *ConnPool) Put(c *AsyncTcpConn) (err error) {
 	return
 }
 
-func (p *ConnPool) Delete(c *AsyncTcpConn) {
+func (p *ConnPool) Delete(c *AsyncConn) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
@@ -135,28 +135,28 @@ func (p *ConnPool) Close() {
 }
 
 func NewConnPool(c *Config) (p *ConnPool, err error) {
-	available := make(AsyncTcpConns, 0, c.MaxConnectionNum)
-	inUse := make(map[string]*AsyncTcpConn, c.MaxConnectionNum)
+	available := make(AsyncConns, 0, c.MaxConnectionNum)
+	inUse := make(map[string]*AsyncConn, c.MaxConnectionNum)
 
 	for i := 0; i < c.MinConnectionNum; i++ {
-		tc, e := NewTcpConn(c)
+		conn, e := NewConn(c)
 		if e != nil {
 			err = errors.Wrap(e, "failed to create tcp connection")
 			return
 		}
 
-		conn := NewAsyncTcpConn(c, tc)
+		asyncConn := NewAsyncConn(c, conn)
 		cmd := &pulsar_proto.CommandConnect{
 			ClientVersion:   proto.String(ClientName),
 			AuthMethod:      pulsar_proto.AuthMethod_AuthMethodNone.Enum(),
 			ProtocolVersion: proto.Int32(DefaultProtocolVersion),
 		}
-		if e := conn.Connect(cmd); e != nil {
+		if e := asyncConn.Connect(cmd); e != nil {
 			err = errors.Wrap(e, "failed to send connect command")
 			return
 		}
 
-		available = append(available, conn)
+		available = append(available, asyncConn)
 	}
 
 	p = &ConnPool{

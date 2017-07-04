@@ -1,8 +1,12 @@
-hash: 9337ec520156e737b13049eb457cc90f712e45e48dba4373e88af1d1cdf2891e
-updated: 2017-05-19T09:28:29.259063687+09:00
+hash: e194b0aefc68e51083fc9321e73c97af452dc725b767ac53ab34a803df550bec
+updated: 2017-07-03T21:20:59.466575194+09:00
 imports:
+- name: github.com/ardielle/ardielle-go
+  version: 780d858788e72a55335f778b08f4baceac59a8de
+  subpackages:
+  - rdl
 - name: github.com/golang/protobuf
-  version: fec3b39b059c0f88fa6b20f5ed012b1aa203a8b4
+  version: 6a1fa9404c0aebf36c879bc50152edcc953910d2
   subpackages:
   - proto
   - proto/testdata
@@ -16,17 +20,22 @@ imports:
   - ptypes/timestamp
   - ptypes/wrappers
 - name: github.com/jessevdk/go-flags
-  version: 460c7bb0abd6e927f2767cadc91aa6ef776a98b4
+  version: 5695738f733662da3e9afc2283bba6f3c879002d
 - name: github.com/pkg/errors
   version: c605e284fe17294bda444b34710735b29d1a9d90
 - name: github.com/Sirupsen/logrus
-  version: 5e5dc898656f695e2a086b8e12559febbfc01562
+  version: 7dd06bf38e1e13df288d471a57d5adbac106be9e
+- name: github.com/yahoo/athenz
+  version: d759693a836604cb7f6417f20969df3172db41f3
+  subpackages:
+  - clients/go/zts
+  - libs/go/zmssvctoken
 - name: golang.org/x/sys
-  version: a2e06a18b0d52d8cb2010e04b372a1965d8e3439
+  version: 0e0164865330d5cf1c00247be08330bf96e2f87c
   subpackages:
   - unix
 - name: gopkg.in/ini.v1
-  version: 36da989cdc560b989d8f195aec46214d33665d20
+  version: d3de07a94d22b4a0972deb4b96d790c2c0ce8333
 testImports:
 - name: golang.org/x/sync
   version: f52d1811a62927559de87708c8913c1650ce4f26

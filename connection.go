@@ -2,9 +2,12 @@ package pulsar
 
 import (
 	"bytes"
+	"crypto/tls"
+	"crypto/x509"
 	"encoding/binary"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"net"
 	"sync"
 	"time"
@@ -34,6 +37,8 @@ const (
 )
 
 var (
+	ErrAppendTrustCerts = errors.New("failed to append trust certs file")
+
 	ErrNoConnection  = errors.New("need to establish a connection")
 	ErrSentConnect   = errors.New("connecting now, wait for a couple of seconds")
 	ErrHasConnection = errors.New("connection has already established")
@@ -72,7 +77,7 @@ type Conn interface {
 	Close()
 }
 
-type AsyncTcpConn struct {
+type AsyncConn struct {
 	config *Config
 
 	id  string
@@ -83,13 +88,13 @@ type AsyncTcpConn struct {
 
 	readFrameMutex   sync.Mutex
 	sendReceiveMutex sync.Mutex
-	conn             *net.TCPConn
+	conn             net.Conn
 	state            ConnectionState
 }
 
-type AsyncTcpConns []*AsyncTcpConn
+type AsyncConns []*AsyncConn
 
-func (ac *AsyncTcpConn) write(data []byte) (total int, err error) {
+func (ac *AsyncConn) write(data []byte) (total int, err error) {
 	if _, err = io.Copy(ac.conn, bytes.NewBuffer(data)); err != nil {
 		err = errors.Wrap(err, "failed to write to connection")
 		return
@@ -97,7 +102,7 @@ func (ac *AsyncTcpConn) write(data []byte) (total int, err error) {
 	return
 }
 
-func (ac *AsyncTcpConn) writeLoop() {
+func (ac *AsyncConn) writeLoop() {
 	for {
 		r, ok := <-ac.wch
 		if !ok {
@@ -122,17 +127,16 @@ func (ac *AsyncTcpConn) writeLoop() {
 	}
 }
 
-func (ac *AsyncTcpConn) readFrame(size int64) (frame *bytes.Buffer, err error) {
+func (ac *AsyncConn) readFrame(size int64) (frame *bytes.Buffer, err error) {
 	frame = bytes.NewBuffer(make([]byte, 0, size))
 	if _, err = io.CopyN(frame, ac.conn, size); err != nil {
 		err = errors.Wrap(err, "failed to read frame")
 		return
 	}
-
 	return
 }
 
-func (ac *AsyncTcpConn) read() (frame *command.Frame, err error) {
+func (ac *AsyncConn) read() (frame *command.Frame, err error) {
 	/* there are 2 framing formats.
 
 	https://github.com/apache/incubator-pulsar/blob/master/docs/BinaryProtocol.md
@@ -214,7 +218,7 @@ func (ac *AsyncTcpConn) read() (frame *command.Frame, err error) {
 	return
 }
 
-func (ac *AsyncTcpConn) decodeFrame(frame *command.Frame) (response *Response) {
+func (ac *AsyncConn) decodeFrame(frame *command.Frame) (response *Response) {
 	base := command.NewBase()
 	if _, err := base.Unmarshal(frame.Cmddata); err != nil {
 		err = errors.Wrap(err, "failed to unmarshal base")
@@ -267,7 +271,7 @@ func (ac *AsyncTcpConn) decodeFrame(frame *command.Frame) (response *Response) {
 	return
 }
 
-func (ac *AsyncTcpConn) readLoop() {
+func (ac *AsyncConn) readLoop() {
 	for {
 		frame, err := ac.read()
 		if err != nil {
@@ -298,22 +302,22 @@ func (ac *AsyncTcpConn) readLoop() {
 	}
 }
 
-func (ac *AsyncTcpConn) GetID() (id string) {
+func (ac *AsyncConn) GetID() (id string) {
 	id = ac.id
 	return
 }
 
-func (ac *AsyncTcpConn) GetConfig() (c *Config) {
+func (ac *AsyncConn) GetConfig() (c *Config) {
 	c = ac.config
 	return
 }
 
-func (ac *AsyncTcpConn) GetConnection() (conn Conn) {
+func (ac *AsyncConn) GetConnection() (conn Conn) {
 	conn = ac
 	return
 }
 
-func (ac *AsyncTcpConn) LookupTopic(
+func (ac *AsyncConn) LookupTopic(
 	msg *pulsar_proto.CommandLookupTopic,
 ) (res *pulsar_proto.CommandLookupTopicResponse, err error) {
 	var r *Response
@@ -332,7 +336,7 @@ func (ac *AsyncTcpConn) LookupTopic(
 	return
 }
 
-func (ac *AsyncTcpConn) Connect(msg *pulsar_proto.CommandConnect) (err error) {
+func (ac *AsyncConn) Connect(msg *pulsar_proto.CommandConnect) (err error) {
 	switch ac.state {
 	case ConnectionStateSentConnectFrame:
 		err = ErrSentConnect
@@ -350,10 +354,11 @@ func (ac *AsyncTcpConn) Connect(msg *pulsar_proto.CommandConnect) (err error) {
 		ac.state = ConnectionStateSentConnectFrame
 		ac.sendReceiveMutex.Unlock()
 	}
+
 	return
 }
 
-func (ac *AsyncTcpConn) Send(r *Request) (err error) {
+func (ac *AsyncConn) Send(r *Request) (err error) {
 	if ac.state != ConnectionStateReady {
 		err = ErrNoConnection
 		return
@@ -366,20 +371,37 @@ func (ac *AsyncTcpConn) Send(r *Request) (err error) {
 	return
 }
 
-func (ac *AsyncTcpConn) Receive() (response *Response, err error) {
+func (ac *AsyncConn) Receive() (response *Response, err error) {
 	switch ac.state {
 	case ConnectionStateNone:
-		err = ErrHasConnection
+		err = ErrNoConnection
 		return
 	case ConnectionStateSentConnectFrame:
 		log.WithFields(log.Fields{
 			"second": defaultWaitConnectedSecond,
 		}).Debug("waiting to receive connected")
+
 		time.Sleep(defaultWaitConnectedSecond * time.Second)
 		if ac.state != ConnectionStateReady {
-			err = ErrHasConnection
-			return
+			var response *Response
+			select {
+			case response = <-ac.rch:
+			default:
+				// do nothing
+			}
+
+			if response == nil {
+				err = ErrSentConnect
+			} else {
+				if response.Error != nil {
+					err = response.Error
+				} else {
+					cmdError := response.BaseCommand.GetRawCommand().GetError()
+					err = errors.New(cmdError.String())
+				}
+			}
 		}
+		return
 	}
 
 	ac.sendReceiveMutex.Lock()
@@ -398,12 +420,12 @@ func (ac *AsyncTcpConn) Receive() (response *Response, err error) {
 			"meta":         response.Meta,
 			"payload":      response.Payload,
 			"batchMessage": response.BatchMessage,
-		}).Debug("receive in AsyncTcpConn")
+		}).Debug("receive in AsyncConn")
 	}
 	return
 }
 
-func (ac *AsyncTcpConn) Request(r *Request) (response *Response, err error) {
+func (ac *AsyncConn) Request(r *Request) (response *Response, err error) {
 	err = ac.Send(r)
 	if err != nil {
 		err = errors.Wrap(err, "failed to send in request")
@@ -419,7 +441,7 @@ func (ac *AsyncTcpConn) Request(r *Request) (response *Response, err error) {
 	return
 }
 
-func (ac *AsyncTcpConn) GetCommandFromBroker() (cmd *pulsar_proto.BaseCommand) {
+func (ac *AsyncConn) GetCommandFromBroker() (cmd *pulsar_proto.BaseCommand) {
 	select {
 	case cmd = <-ac.cch:
 	default:
@@ -428,7 +450,7 @@ func (ac *AsyncTcpConn) GetCommandFromBroker() (cmd *pulsar_proto.BaseCommand) {
 	return
 }
 
-func (ac *AsyncTcpConn) Close() {
+func (ac *AsyncConn) Close() {
 	ac.sendReceiveMutex.Lock()
 	defer ac.sendReceiveMutex.Unlock()
 
@@ -440,16 +462,16 @@ func (ac *AsyncTcpConn) Close() {
 	ac.rch = nil
 }
 
-func (ac *AsyncTcpConn) Run() {
+func (ac *AsyncConn) Run() {
 	ac.id = fmt.Sprintf("%p", ac)
 	go ac.writeLoop()
 	go ac.readLoop()
 }
 
-func NewAsyncTcpConn(c *Config, tc *net.TCPConn) (ac *AsyncTcpConn) {
-	ac = &AsyncTcpConn{
+func NewAsyncConn(c *Config, conn net.Conn) (ac *AsyncConn) {
+	ac = &AsyncConn{
 		config: c,
-		conn:   tc,
+		conn:   conn,
 		state:  ConnectionStateNone,
 		wch:    make(chan *Request, writeChanSize),
 		ech:    make(chan error, writeChanSize),
@@ -460,19 +482,61 @@ func NewAsyncTcpConn(c *Config, tc *net.TCPConn) (ac *AsyncTcpConn) {
 	return
 }
 
-func NewTcpConn(c *Config) (tc *net.TCPConn, err error) {
-	tc, err = net.DialTCP(c.Proto, c.LocalAddr, c.RemoteAddr)
+func NewTcpConn(c *Config) (conn net.Conn, err error) {
+	conn, err = net.DialTCP(c.Proto, c.LocalAddr, c.RemoteAddr)
 	if err != nil {
 		err = errors.Wrap(err, "failed to dial via tcp")
 		return
 	}
 	deadline := time.Now().Add(c.Timeout)
-	tc.SetDeadline(deadline)
+	conn.SetDeadline(deadline)
 
 	log.WithFields(log.Fields{
 		"remoteAddr": c.RemoteAddr,
 		"deadline":   deadline,
 	}).Debug("client settings")
 
+	return
+}
+
+func NewTlsConn(c *Config) (conn net.Conn, err error) {
+	tlsConfig := &tls.Config{
+		InsecureSkipVerify: c.TLSAllowInsecureConnection,
+	}
+
+	if c.TLSTrustCertsFilepath != "" {
+		var bytes []byte
+		bytes, err = ioutil.ReadFile(c.TLSTrustCertsFilepath)
+		if err != nil {
+			err = errors.Wrap(err, "failed to read trust certs file")
+			return
+		}
+
+		certPool := x509.NewCertPool()
+		ok := certPool.AppendCertsFromPEM(bytes)
+		if !ok {
+			err = ErrAppendTrustCerts
+			return
+		}
+		tlsConfig.RootCAs = certPool
+	}
+
+	conn, err = tls.Dial(c.Proto, c.ServiceURL.Host, tlsConfig)
+	if err != nil {
+		err = errors.Wrap(err, "failed to dial via tcp with tls")
+		return
+	}
+	deadline := time.Now().Add(c.Timeout)
+	conn.SetDeadline(deadline)
+
+	return
+}
+
+func NewConn(c *Config) (conn net.Conn, err error) {
+	if c.UseTLS {
+		conn, err = NewTlsConn(c)
+	} else {
+		conn, err = NewTcpConn(c)
+	}
 	return
 }

@@ -36,7 +36,7 @@ type PulsarClient struct {
 
 func (c *PulsarClient) LookupTopicWithConnect(
 	conn Conn, topic string, requestId uint64, authoritative bool,
-) (ac *AsyncTcpConn, response *pulsar_proto.CommandLookupTopicResponse, err error) {
+) (ac *AsyncConn, response *pulsar_proto.CommandLookupTopicResponse, err error) {
 	lookup := &pulsar_proto.CommandLookupTopic{
 		Topic:         proto.String(topic),
 		RequestId:     proto.Uint64(requestId),
@@ -51,7 +51,7 @@ func (c *PulsarClient) LookupTopicWithConnect(
 	switch r := response.GetResponse(); r {
 	case pulsar_proto.CommandLookupTopicResponse_Redirect:
 		config := c.GetConfig().Copy()
-		ac, err = newAsyncTcpConnFromLookupTopicResponse(config, response)
+		ac, err = newAsyncConnFromLookupTopicResponse(config, response)
 		if err != nil {
 			err = errors.Wrap(err, "failed to create async tcp connection from topic response")
 			return
@@ -82,7 +82,7 @@ func (c *PulsarClient) LookupTopicWithConnect(
 func (c *PulsarClient) SetLookupTopicConnection(
 	topic string, requestId uint64, authoritative bool,
 ) (err error) {
-	var lookupConn *AsyncTcpConn
+	var lookupConn *AsyncConn
 	lookupConn, _, err = c.LookupTopicWithConnect(c.conn, topic, requestId, false)
 	if err != nil {
 		err = errors.Wrap(err, "failed to get connection and topic lookup")
@@ -169,32 +169,32 @@ func (c *PulsarClient) Close() {
 	}
 }
 
-func newAsyncTcpConnFromLookupTopicResponse(
+func newAsyncConnFromLookupTopicResponse(
 	config *Config, response *pulsar_proto.CommandLookupTopicResponse,
-) (ac *AsyncTcpConn, err error) {
-	config.URL, err = url.Parse(response.GetBrokerServiceUrl())
+) (ac *AsyncConn, err error) {
+	config.ServiceURL, err = url.Parse(response.GetBrokerServiceUrl())
 	if err != nil {
 		err = errors.Wrap(err, "failed to parse service url from lookup topic")
 		return
 	}
-	config.RemoteAddr, err = net.ResolveTCPAddr(PROTO_TCP, config.URL.Host)
+	config.RemoteAddr, err = net.ResolveTCPAddr(PROTO_TCP, config.ServiceURL.Host)
 	if err != nil {
 		err = errors.Wrap(err, "failed to resolve remote tcp address")
 		return
 	}
 
-	var tc *net.TCPConn
-	tc, err = NewTcpConn(config)
+	var conn net.Conn
+	conn, err = NewConn(config)
 	if err != nil {
 		err = errors.Wrap(err, "failed to create tcp connection")
 		return
 	}
-	ac = NewAsyncTcpConn(config, tc)
+	ac = NewAsyncConn(config, conn)
 
 	return
 }
 
-func NewClient(ac *AsyncTcpConn) (client *PulsarClient) {
+func NewClient(ac *AsyncConn) (client *PulsarClient) {
 	client = &PulsarClient{ac, ac.GetConnection(), 0}
 	return
 }

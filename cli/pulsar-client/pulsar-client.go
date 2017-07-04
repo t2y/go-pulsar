@@ -1,6 +1,7 @@
 package main
 
 import (
+	"crypto/tls"
 	"os"
 	"strings"
 	"time"
@@ -25,8 +26,8 @@ func init() {
 var opts pulsar.Options
 
 func mergeConfig(c *pulsar.Config, opts *pulsar.Options) {
-	if opts.URL != nil {
-		c.URL = opts.URL
+	if opts.ServiceURL != nil {
+		c.ServiceURL = opts.ServiceURL
 	}
 	if opts.Verbose {
 		c.LogLevel = log.DebugLevel
@@ -68,15 +69,23 @@ func getConfig(opts *pulsar.Options) (c *pulsar.Config) {
 
 func getClient(opts *pulsar.Options) (client *pulsar.PulsarClient) {
 	config := getConfig(opts)
-	tc, err := pulsar.NewTcpConn(config)
+	conn, err := pulsar.NewConn(config)
 	if err != nil {
 		log.WithFields(log.Fields{
 			"config": config,
 			"err":    err,
-		}).Fatal("Failed to create tcp connection")
+		}).Fatal("Failed to create connection")
 	}
 
-	ac := pulsar.NewAsyncTcpConn(config, tc)
+	if config.UseTLS {
+		state := conn.(*tls.Conn).ConnectionState()
+		log.WithFields(log.Fields{
+			"HandshakeComplete":          state.HandshakeComplete,
+			"NegotiatedProtocolIsMutual": state.NegotiatedProtocolIsMutual,
+		}).Debug("tls connection details")
+	}
+
+	ac := pulsar.NewAsyncConn(config, conn)
 	client = pulsar.NewClient(ac)
 	if err != nil {
 		log.WithFields(log.Fields{
@@ -91,6 +100,40 @@ func getClient(opts *pulsar.Options) (client *pulsar.PulsarClient) {
 		ProtocolVersion: proto.Int32(pulsar.DefaultProtocolVersion),
 	}
 
+	if config.AuthMethod != "" {
+		auth, err := pulsar.NewAuthentication(config.AuthMethod, config)
+		if err != nil {
+			log.WithFields(log.Fields{
+				"config": config,
+				"err":    err,
+			}).Fatal("Failed to initialize authentication")
+		}
+
+		auth.Configure(config.AuthParams)
+		err = auth.Start()
+		if err != nil {
+			log.WithFields(log.Fields{
+				"err": err,
+			}).Fatal("Failed to start authentication")
+		}
+
+		config.AuthenticationDataProvider, err = auth.GetAuthData()
+		if err != nil {
+			log.WithFields(log.Fields{
+				"err": err,
+			}).Fatal("Failed to get authentication data provider")
+		}
+
+		authMethodName := auth.GetAuthMethodName()
+		connect.AuthMethod = pulsar_proto.AuthMethod(
+			pulsar_proto.AuthMethod_value[authMethodName],
+		).Enum()
+		connect.AuthMethodName = proto.String(authMethodName)
+
+		authData := config.AuthenticationDataProvider.GetCommandData()
+		connect.AuthData = []byte(authData)
+	}
+
 	err = client.Connect(connect)
 	if err != nil {
 		log.WithFields(log.Fields{
@@ -99,7 +142,11 @@ func getClient(opts *pulsar.Options) (client *pulsar.PulsarClient) {
 	}
 
 	time.Sleep(1 * time.Second) // waiting for connected command
-	client.Receive()
+	if _, err := client.Receive(); err != nil {
+		log.WithFields(log.Fields{
+			"err": err,
+		}).Fatal("Failed to receive connected from broker")
+	}
 
 	return
 }
