@@ -56,17 +56,18 @@ func (c *PulsarClient) LookupTopicWithConnect(
 			err = errors.Wrap(err, "failed to create async tcp connection from topic response")
 			return
 		}
-		connect := &pulsar_proto.CommandConnect{
-			ClientVersion:   proto.String(ClientName),
-			AuthMethod:      pulsar_proto.AuthMethod_AuthMethodNone.Enum(),
-			ProtocolVersion: proto.Int32(DefaultProtocolVersion),
+
+		var connect *pulsar_proto.CommandConnect
+		connect, err = NewCommandConnect(config, true)
+		if err != nil {
+			err = errors.Wrap(err, "failed to create connect command")
+			return
 		}
+
 		if err = ac.Connect(connect); err != nil {
 			err = errors.Wrap(err, "failed to connect service url from topic lookup")
 			return
 		}
-		time.Sleep(1 * time.Second)
-		ac.Receive()
 	case pulsar_proto.CommandLookupTopicResponse_Connect:
 		// do nothing
 	case pulsar_proto.CommandLookupTopicResponse_Failed:

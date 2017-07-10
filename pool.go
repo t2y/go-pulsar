@@ -4,10 +4,7 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/golang/protobuf/proto"
 	"github.com/pkg/errors"
-
-	pulsar_proto "github.com/t2y/go-pulsar/proto/pb"
 )
 
 const (
@@ -145,12 +142,13 @@ func NewConnPool(c *Config) (p *ConnPool, err error) {
 			return
 		}
 
-		asyncConn := NewAsyncConn(c, conn)
-		cmd := &pulsar_proto.CommandConnect{
-			ClientVersion:   proto.String(ClientName),
-			AuthMethod:      pulsar_proto.AuthMethod_AuthMethodNone.Enum(),
-			ProtocolVersion: proto.Int32(DefaultProtocolVersion),
+		cmd, e := NewCommandConnect(c, true)
+		if err != nil {
+			err = errors.Wrap(e, "failed to create connect command")
+			return
 		}
+
+		asyncConn := NewAsyncConn(c, conn)
 		if e := asyncConn.Connect(cmd); e != nil {
 			err = errors.Wrap(e, "failed to send connect command")
 			return

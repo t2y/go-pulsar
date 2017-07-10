@@ -140,44 +140,12 @@ func getClient(opts *pulsar.Options) (client *pulsar.PulsarClient) {
 		}).Fatal("Failed to initialize client")
 	}
 
-	connect := &pulsar_proto.CommandConnect{
-		ClientVersion:   proto.String(pulsar.ClientName),
-		AuthMethod:      pulsar_proto.AuthMethod_AuthMethodNone.Enum(),
-		ProtocolVersion: proto.Int32(pulsar.DefaultProtocolVersion),
-	}
-
-	if config.AuthMethod != "" {
-		auth, err := pulsar.NewAuthentication(config.AuthMethod, config)
-		if err != nil {
-			log.WithFields(log.Fields{
-				"config": config,
-				"err":    err,
-			}).Fatal("Failed to initialize authentication")
-		}
-
-		auth.Configure(config.AuthParams)
-		err = auth.Start()
-		if err != nil {
-			log.WithFields(log.Fields{
-				"err": err,
-			}).Fatal("Failed to start authentication")
-		}
-
-		config.AuthenticationDataProvider, err = auth.GetAuthData()
-		if err != nil {
-			log.WithFields(log.Fields{
-				"err": err,
-			}).Fatal("Failed to get authentication data provider")
-		}
-
-		authMethodName := auth.GetAuthMethodName()
-		connect.AuthMethod = pulsar_proto.AuthMethod(
-			pulsar_proto.AuthMethod_value[authMethodName],
-		).Enum()
-		connect.AuthMethodName = proto.String(authMethodName)
-
-		authData := config.AuthenticationDataProvider.GetCommandData()
-		connect.AuthData = []byte(authData)
+	var connect *pulsar_proto.CommandConnect
+	connect, err = pulsar.NewCommandConnect(config, false)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"err": err,
+		}).Fatal("Failed to create connect command")
 	}
 
 	err = client.Connect(connect)
