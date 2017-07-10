@@ -13,7 +13,6 @@ go-pulsar is still under heavy development. Some functionality are known to be b
 
 ### TODO
 
-* [athenz](https://github.com/yahoo/athenz) authentication
 * partitioned topics functions
 * payload compression
 * unimplemented commands
@@ -45,22 +44,26 @@ Usage:
   pulsar-client [OPTIONS]
 
 Application Options:
-      --url=              pulsar blocker url [$PULSAR_URL]
-      --authParams=       authentication params [$PULSAR_AUTH_PARAMS]
-      --authMethod=       authentication method [$PULSAR_AUTH_METHOD]
-      --conf=             path to pulsar config file [$PULSAR_CONF]
-      --verbose           use verbose mode [$VERBOSE]
-      --timeout=          timeout to communicate with pulsar broker [$PULSAR_TIMEOUT]
-      --command=          produce or consume [$PULSAR_COMMAND]
-      --topic=            topic name [$PULSAR_TOPIC]
-      --messages=         messages to produce [$PULSAR_MESSAGES]
-      --properties=       properties to produce. e.g) key1:value1,key2:value2 [$PULSAR_PROPERTIES]
-      --numMessages=      number of messages to consume (default: 1) [$PULSAR_NUM_MESSAGES]
-      --subscriptionName= subscription name [$PULSAR_SUBSCRIPTION_NAME]
-      --subscriptionType= subscription type: exclusive, shared, failover (default: exclusive) [$PULSAR_SUBSCRIPTION_TYPE]
+      --serviceUrl=                 pulsar service url [$PULSAR_SERVICE_URL]
+      --authMethod=                 authentication method [$PULSAR_AUTH_METHOD]
+      --authParams=                 authentication params [$PULSAR_AUTH_PARAMS]
+      --useTls                      use tls to connect [$USE_TLS]
+      --tlsAllowInsecureConnection  allow insecure tls connection [$TLS_ALLOW_INSECURE_CONNECTION]
+      --athenzConf=                 path to athenz config file [$PULSAR_ATHENZ_CONF]
+      --athenzAuthHeader=           athenz authentication header [$PULSAR_ATHENZ_AUTH_HEADER]
+      --conf=                       path to pulsar config file [$PULSAR_CONF]
+      --verbose                     use verbose mode [$VERBOSE]
+      --timeout=                    timeout to communicate with pulsar broker [$PULSAR_TIMEOUT]
+      --command=                    produce or consume [$PULSAR_COMMAND]
+      --topic=                      topic name [$PULSAR_TOPIC]
+      --messages=                   messages to produce [$PULSAR_MESSAGES]
+      --properties=                 properties to produce. e.g) key1:value1,key2:value2 [$PULSAR_PROPERTIES]
+      --numMessages=                number of messages to consume (default: 1) [$PULSAR_NUM_MESSAGES]
+      --subscriptionName=           subscription name [$PULSAR_SUBSCRIPTION_NAME]
+      --subscriptionType=           subscription type: exclusive, shared, failover (default: exclusive) [$PULSAR_SUBSCRIPTION_TYPE]
 
 Help Options:
-  -h, --help              Show this help message
+  -h, --help                        Show this help message
 ```
 
 Some options can be set by *ini* file. There're a sample file in *example* directory.
@@ -68,7 +71,7 @@ Some options can be set by *ini* file. There're a sample file in *example* direc
 ```bash
 $ cat example/default.ini
 log_level = info
-url = pulsar://localhost:6650/
+service_url = pulsar://localhost:6650/
 timeout = 40s
 min_connection_num = 2
 max_connection_num = 20
@@ -137,6 +140,33 @@ The `--verbose` option makes debug easy. It shows communications between produce
 $ ./bin/pulsar-client --conf example/default.ini --command consume --topic "persistent://sample/standalone/ns1/my-topic" --subscriptionName sub
 INFO[2017-06-15T08:50:33.467806336+09:00] read and parse ini file                       iniConf=&{info pulsar://localhost:6650/ 40s 2 20 pulsar://localhost:6650/ info} path="example/default.ini"
 INFO[2017-06-15T08:50:34.515306354+09:00] messages successfully consumed                key-value=[] message="Hello Pulsar"
+```
+
+
+## Authentication
+
+go-pulsar supports [Athenz](https://github.com/yahoo/athenz/) authentication.
+
+* [Pulsar Authentication: Athenz](https://github.com/apache/incubator-pulsar/blob/master/docs/Authentication.md#athenz)
+
+Read above documentation for each athenz parameters. Then, you can set some or all parameters on your needs into *ini* file. There're a sample file for athenz in *example* directory.
+
+```bash
+$ cat example/athenz.ini 
+log_level = info
+service_url = pulsar://localhost:6650/
+timeout = 40s
+min_connection_num = 2
+max_connection_num = 20
+
+auth_method=athenz
+auth_params=tenantDomain:${yourDomain},tenantService:${yourService},providerDomain:${yourProviderDomain},privateKeyPath:${pathToPrivateKeyFile},keyId:0
+use_tls=true
+tls_allow_insecure_connection=false
+tls_trust_certs_filepath=${pathToRootCaCertsFileIfNeeded}
+
+athenz_conf=${pathToAthenzConfFile}
+athenz_auth_header=${yourAthenzAuthenticationHeader}
 ```
 
 ## License
