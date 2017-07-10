@@ -81,6 +81,8 @@ func (c *Config) Copy() (config *Config) {
 		TLSAllowInsecureConnection: c.TLSAllowInsecureConnection,
 		TLSTrustCertsFilepath:      c.TLSTrustCertsFilepath,
 
+		AuthenticationDataProvider: c.AuthenticationDataProvider,
+
 		AthenzConfig:     c.AthenzConfig,
 		AthenzAuthHeader: c.AthenzAuthHeader,
 
@@ -144,6 +146,21 @@ func LoadIniFile(path string) (iniConf *IniConfig, err error) {
 	return
 }
 
+func GetAthenzConfig(path string) (athenzConfig *AthenzConfig, err error) {
+	contents, err := ioutil.ReadFile(path)
+	if err != nil {
+		err = errors.Wrap(err, "failed to read athenz conf file")
+		return
+	}
+
+	if err = json.Unmarshal(contents, &athenzConfig); err != nil {
+		err = errors.Wrap(err, "failed to unmarshal athenz conf")
+		return
+	}
+
+	return
+}
+
 func NewConfigFromIni(iniConf *IniConfig) (c *Config, err error) {
 	remoteTcpAddr, err := net.ResolveTCPAddr(PROTO_TCP, iniConf.ServiceURL.Host)
 	if err != nil {
@@ -165,17 +182,10 @@ func NewConfigFromIni(iniConf *IniConfig) (c *Config, err error) {
 		authParams = parse.ParseAuthParams(iniConf.AuthParams)
 	}
 
-	var athenzConfig AthenzConfig
+	var athenzConfig *AthenzConfig
 	if iniConf.AthenzConf != "" {
-		var contents []byte
-		contents, err = ioutil.ReadFile(iniConf.AthenzConf)
-		if err != nil {
-			err = errors.Wrap(err, "failed to read athenz conf file")
-			return
-		}
-
-		if err = json.Unmarshal(contents, &athenzConfig); err != nil {
-			err = errors.Wrap(err, "failed to unmarshal athenz conf")
+		if athenzConfig, err = GetAthenzConfig(iniConf.AthenzConf); err != nil {
+			err = errors.Wrap(err, "failed to get athenz conf from ini")
 			return
 		}
 	}
@@ -194,7 +204,7 @@ func NewConfigFromIni(iniConf *IniConfig) (c *Config, err error) {
 		TLSAllowInsecureConnection: iniConf.TLSAllowInsecureConnection,
 		TLSTrustCertsFilepath:      iniConf.TLSTrustCertsFilepath,
 
-		AthenzConfig:     &athenzConfig,
+		AthenzConfig:     athenzConfig,
 		AthenzAuthHeader: iniConf.AthenzAuthHeader,
 
 		ServiceURL: iniConf.ServiceURL,
@@ -229,12 +239,25 @@ func NewConfigFromOptions(opts *Options) (c *Config, err error) {
 		c.AuthParams = parse.ParseAuthParams(*opts.AuthParams)
 	}
 
-	if opts.UseTLS != nil {
-		c.UseTLS = *opts.UseTLS
+	if opts.UseTLS {
+		c.UseTLS = opts.UseTLS
 	}
 
-	if opts.TLSAllowInsecureConnection != nil {
-		c.TLSAllowInsecureConnection = *opts.TLSAllowInsecureConnection
+	if opts.TLSAllowInsecureConnection {
+		c.TLSAllowInsecureConnection = opts.TLSAllowInsecureConnection
+	}
+
+	if opts.AthenzConf != nil {
+		var athenzConfig *AthenzConfig
+		if athenzConfig, err = GetAthenzConfig(*opts.AthenzConf); err != nil {
+			err = errors.Wrap(err, "failed to get athenz conf from options")
+			return
+		}
+		c.AthenzConfig = athenzConfig
+	}
+
+	if opts.AthenzAuthHeader != nil {
+		c.AthenzAuthHeader = *opts.AthenzAuthHeader
 	}
 
 	if opts.Timeout == nil {

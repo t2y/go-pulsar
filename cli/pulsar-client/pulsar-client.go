@@ -9,8 +9,10 @@ import (
 	log "github.com/Sirupsen/logrus"
 	"github.com/golang/protobuf/proto"
 	flags "github.com/jessevdk/go-flags"
+	"github.com/pkg/errors"
 
 	pulsar "github.com/t2y/go-pulsar"
+	"github.com/t2y/go-pulsar/internal/parse"
 	"github.com/t2y/go-pulsar/proto/command"
 	pulsar_proto "github.com/t2y/go-pulsar/proto/pb"
 )
@@ -25,14 +27,49 @@ func init() {
 
 var opts pulsar.Options
 
-func mergeConfig(c *pulsar.Config, opts *pulsar.Options) {
+func mergeConfig(c *pulsar.Config, opts *pulsar.Options) (err error) {
 	if opts.ServiceURL != nil {
 		c.ServiceURL = opts.ServiceURL
 	}
+
+	if opts.AuthMethod != nil {
+		c.AuthMethod = *opts.AuthMethod
+	}
+
+	if opts.AuthParams != nil {
+		c.AuthParams = parse.ParseAuthParams(*opts.AuthParams)
+	}
+
+	if opts.UseTLS {
+		c.UseTLS = opts.UseTLS
+	}
+
+	if opts.TLSAllowInsecureConnection {
+		c.TLSAllowInsecureConnection = opts.TLSAllowInsecureConnection
+	}
+
+	if opts.AthenzConf != nil {
+		c.AthenzConfig, err = pulsar.GetAthenzConfig(*opts.AthenzConf)
+		if err != nil {
+			err = errors.Wrap(err, "failed to get athenz conf from options")
+			return
+		}
+	}
+
+	if opts.AthenzAuthHeader != nil {
+		c.AthenzAuthHeader = *opts.AthenzAuthHeader
+	}
+
+	if opts.Timeout != nil {
+		c.Timeout = *opts.Timeout
+	}
+
 	if opts.Verbose {
 		c.LogLevel = log.DebugLevel
 		log.SetLevel(log.DebugLevel)
 	}
+
+	return
 }
 
 func getConfig(opts *pulsar.Options) (c *pulsar.Config) {
@@ -54,6 +91,7 @@ func getConfig(opts *pulsar.Options) (c *pulsar.Config) {
 				"err":  err,
 			}).Fatal("Failed to load ini file")
 		}
+
 		c, err = pulsar.NewConfigFromIni(iniConf)
 		if err != nil {
 			log.WithFields(log.Fields{
@@ -62,7 +100,15 @@ func getConfig(opts *pulsar.Options) (c *pulsar.Config) {
 				"err":     err,
 			}).Fatal("Failed to initialize config")
 		}
-		mergeConfig(c, opts)
+
+		err = mergeConfig(c, opts)
+		if err != nil {
+			log.WithFields(log.Fields{
+				"conf": opts.Conf,
+				"opts": opts,
+				"err":  err,
+			}).Fatal("Failed to merge ini config from options")
+		}
 	}
 	return
 }

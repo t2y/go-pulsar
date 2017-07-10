@@ -21,8 +21,8 @@ type Options struct {
 	ServiceURLString           *string        `long:"serviceUrl" env:"PULSAR_SERVICE_URL" description:"pulsar service url"`
 	AuthMethod                 *string        `long:"authMethod" env:"PULSAR_AUTH_METHOD" description:"authentication method"`
 	AuthParams                 *string        `long:"authParams" env:"PULSAR_AUTH_PARAMS" description:"authentication params"`
-	UseTLS                     *bool          `long:"useTls" env:"USE_TLS" description:"use tls to connect"`
-	TLSAllowInsecureConnection *bool          `long:"tlsAllowInsecureConnection" env:"TLS_ALLOW_INSECURE_CONNECTION" description:"allow insecure tls connection"`
+	UseTLS                     bool           `long:"useTls" env:"USE_TLS" description:"use tls to connect"`
+	TLSAllowInsecureConnection bool           `long:"tlsAllowInsecureConnection" env:"TLS_ALLOW_INSECURE_CONNECTION" description:"allow insecure tls connection"`
 	AthenzConf                 *string        `long:"athenzConf" env:"PULSAR_ATHENZ_CONF" description:"path to athenz config file"`
 	AthenzAuthHeader           *string        `long:"athenzAuthHeader" env:"PULSAR_ATHENZ_AUTH_HEADER" description:"athenz authentication header"`
 	Conf                       *string        `long:"conf" env:"PULSAR_CONF" description:"path to pulsar config file"`
