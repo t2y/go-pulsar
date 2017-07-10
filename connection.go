@@ -24,8 +24,6 @@ const (
 	writeChanSize   = 32
 	readChanSize    = 32
 	commandChanSize = 32
-
-	defaultWaitConnectedSecond = 3
 )
 
 type ConnectionState int
@@ -349,10 +347,30 @@ func (ac *AsyncConn) Connect(msg *pulsar_proto.CommandConnect) (err error) {
 	request := &Request{Message: msg}
 	ac.wch <- request
 	err, _ = <-ac.ech
-	if err == nil {
-		ac.sendReceiveMutex.Lock()
-		ac.state = ConnectionStateSentConnectFrame
-		ac.sendReceiveMutex.Unlock()
+	if err != nil {
+		return
+	}
+
+	ac.sendReceiveMutex.Lock()
+	ac.state = ConnectionStateSentConnectFrame
+	ac.sendReceiveMutex.Unlock()
+
+	response := <-ac.rch
+	if response.Error != nil {
+		err = response.Error
+		return
+	}
+
+	raw := response.BaseCommand.GetRawCommand()
+	switch t := raw.GetType(); t {
+	case pulsar_proto.BaseCommand_CONNECTED:
+		connected := raw.GetConnected()
+		log.WithFields(log.Fields{
+			"server_version":   connected.GetServerVersion(),
+			"protocol_version": connected.GetProtocolVersion(),
+		}).Debug("connected successfully")
+	case pulsar_proto.BaseCommand_ERROR:
+		err = errors.New(raw.GetError().String())
 	}
 
 	return
@@ -377,30 +395,7 @@ func (ac *AsyncConn) Receive() (response *Response, err error) {
 		err = ErrNoConnection
 		return
 	case ConnectionStateSentConnectFrame:
-		log.WithFields(log.Fields{
-			"second": defaultWaitConnectedSecond,
-		}).Debug("waiting to receive connected")
-
-		time.Sleep(defaultWaitConnectedSecond * time.Second)
-		if ac.state != ConnectionStateReady {
-			var response *Response
-			select {
-			case response = <-ac.rch:
-			default:
-				// do nothing
-			}
-
-			if response == nil {
-				err = ErrSentConnect
-			} else {
-				if response.Error != nil {
-					err = response.Error
-				} else {
-					cmdError := response.BaseCommand.GetRawCommand().GetError()
-					err = errors.New(cmdError.String())
-				}
-			}
-		}
+		err = ErrSentConnect
 		return
 	}
 

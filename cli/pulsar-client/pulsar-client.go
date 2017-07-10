@@ -187,13 +187,6 @@ func getClient(opts *pulsar.Options) (client *pulsar.PulsarClient) {
 		}).Fatal("Failed to connect to a broker")
 	}
 
-	time.Sleep(1 * time.Second) // waiting for connected command
-	if _, err := client.Receive(); err != nil {
-		log.WithFields(log.Fields{
-			"err": err,
-		}).Fatal("Failed to receive connected from broker")
-	}
-
 	return
 }
 
