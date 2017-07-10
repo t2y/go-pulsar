@@ -361,16 +361,16 @@ func (ac *AsyncConn) Connect(msg *pulsar_proto.CommandConnect) (err error) {
 		return
 	}
 
-	raw := response.BaseCommand.GetRawCommand()
-	switch t := raw.GetType(); t {
+	base := response.BaseCommand.GetRawCommand()
+	switch t := base.GetType(); t {
 	case pulsar_proto.BaseCommand_CONNECTED:
-		connected := raw.GetConnected()
+		connected := base.GetConnected()
 		log.WithFields(log.Fields{
 			"server_version":   connected.GetServerVersion(),
 			"protocol_version": connected.GetProtocolVersion(),
 		}).Debug("connected successfully")
 	case pulsar_proto.BaseCommand_ERROR:
-		err = errors.New(raw.GetError().String())
+		err = command.NewCommandError(base.GetError())
 	}
 
 	return
@@ -408,15 +408,27 @@ func (ac *AsyncConn) Receive() (response *Response, err error) {
 		return
 	}
 
-	err = response.Error
-	if err == nil {
-		log.WithFields(log.Fields{
-			"base":         response.BaseCommand.GetRawCommand(),
-			"meta":         response.Meta,
-			"payload":      response.Payload,
-			"batchMessage": response.BatchMessage,
-		}).Debug("receive in AsyncConn")
+	if response.Error != nil {
+		err = response.Error
+		return
 	}
+
+	base := response.BaseCommand.GetRawCommand()
+	switch t := base.GetType(); t {
+	case pulsar_proto.BaseCommand_ERROR:
+		err = command.NewCommandError(base.GetError())
+	}
+
+	if err != nil {
+		return
+	}
+
+	log.WithFields(log.Fields{
+		"base":         base,
+		"meta":         response.Meta,
+		"payload":      response.Payload,
+		"batchMessage": response.BatchMessage,
+	}).Debug("receive in AsyncConn")
 	return
 }
 
