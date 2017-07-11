@@ -366,8 +366,10 @@ func (ac *AsyncConn) Connect(msg *pulsar_proto.CommandConnect) (err error) {
 	case pulsar_proto.BaseCommand_CONNECTED:
 		connected := base.GetConnected()
 		log.WithFields(log.Fields{
-			"server_version":   connected.GetServerVersion(),
-			"protocol_version": connected.GetProtocolVersion(),
+			"serviceURL":      ac.config.ServiceURL,
+			"useTLS":          ac.config.UseTLS,
+			"serverVersion":   connected.GetServerVersion(),
+			"protocolVersion": connected.GetProtocolVersion(),
 		}).Debug("connected successfully")
 	case pulsar_proto.BaseCommand_ERROR:
 		err = command.NewCommandError(base.GetError())

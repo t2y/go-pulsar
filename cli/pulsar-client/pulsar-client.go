@@ -352,7 +352,8 @@ func main() {
 	}
 
 	client := getClient(&opts)
-	defer client.Close()
+	conn := client.GetConnection()
+	defer conn.Close()
 
 	if *opts.Command == pulsar.OptionsCommandProduce {
 		if len(opts.Messages) == 0 {

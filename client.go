@@ -30,47 +30,68 @@ var (
 
 type PulsarClient struct {
 	Conn
-	conn       Conn // own connection for a broker created by topic lookup response
+	conn       Conn // own connection for a broker from lookup topic response
 	partitions uint32
+}
+
+func (c *PulsarClient) ConnectToBroker(
+	response *pulsar_proto.CommandLookupTopicResponse,
+) (ac *AsyncConn, err error) {
+	config := c.GetConfig().Copy()
+	ac, err = newAsyncConnFromLookupTopicResponse(config, response)
+	if err != nil {
+		msg := "failed to create async tcp connection from lookup topic response"
+		err = errors.Wrap(err, msg)
+		return
+	}
+
+	var connect *pulsar_proto.CommandConnect
+	connect, err = NewCommandConnect(config, true)
+	if err != nil {
+		err = errors.Wrap(err, "failed to create connect command")
+		return
+	}
+
+	if err = ac.Connect(connect); err != nil {
+		msg := "failed to connect service url from lookup topic response"
+		err = errors.Wrap(err, msg)
+		return
+	}
+
+	return
 }
 
 func (c *PulsarClient) LookupTopicWithConnect(
 	conn Conn, topic string, requestId uint64, authoritative bool,
-) (ac *AsyncConn, response *pulsar_proto.CommandLookupTopicResponse, err error) {
+) (ac *AsyncConn, err error) {
 	lookup := &pulsar_proto.CommandLookupTopic{
 		Topic:         proto.String(topic),
 		RequestId:     proto.Uint64(requestId),
 		Authoritative: proto.Bool(authoritative),
 	}
-	response, err = conn.LookupTopic(lookup)
-	if err != nil {
+
+	var response *pulsar_proto.CommandLookupTopicResponse
+	if response, err = conn.LookupTopic(lookup); err != nil {
 		err = errors.Wrap(err, "failed to call LookupTopic")
 		return
 	}
 
 	switch r := response.GetResponse(); r {
 	case pulsar_proto.CommandLookupTopicResponse_Redirect:
-		config := c.GetConfig().Copy()
-		ac, err = newAsyncConnFromLookupTopicResponse(config, response)
-		if err != nil {
-			err = errors.Wrap(err, "failed to create async tcp connection from topic response")
+		var redirectConn *AsyncConn
+		if redirectConn, err = c.ConnectToBroker(response); err != nil {
+			err = errors.Wrap(err, "failed to connect broker with redirection")
 			return
 		}
-
-		var connect *pulsar_proto.CommandConnect
-		connect, err = NewCommandConnect(config, true)
-		if err != nil {
-			err = errors.Wrap(err, "failed to create connect command")
-			return
-		}
-
-		if err = ac.Connect(connect); err != nil {
-			err = errors.Wrap(err, "failed to connect service url from topic lookup")
-			return
-		}
+		defer redirectConn.Close()
+		ac, err = c.LookupTopicWithConnect(
+			redirectConn, topic, requestId, authoritative,
+		)
 	case pulsar_proto.CommandLookupTopicResponse_Connect:
-
-		// do nothing
+		if ac, err = c.ConnectToBroker(response); err != nil {
+			err = errors.Wrap(err, "failed to connect broker")
+			return
+		}
 	case pulsar_proto.CommandLookupTopicResponse_Failed:
 		err = ErrLookupTopicResponseFailed
 	default:
@@ -80,35 +101,15 @@ func (c *PulsarClient) LookupTopicWithConnect(
 	return
 }
 
-// Set p.conn to a broker received by lookup topic response
+// Set c.conn to a broker received by lookup topic response
 func (c *PulsarClient) SetLookupTopicConnection(
 	topic string, requestId uint64, authoritative bool,
 ) (err error) {
-	var lookupConn *AsyncConn
-	lookupConn, _, err = c.LookupTopicWithConnect(c.conn, topic, requestId, false)
+	c.conn, err = c.LookupTopicWithConnect(c.conn, topic, requestId, false)
 	if err != nil {
-		err = errors.Wrap(err, "failed to get connection and topic lookup")
+		msg := "failed to set broker connection from lookup topic response"
+		err = errors.Wrap(err, msg)
 		return
-	}
-
-	if lookupConn != nil {
-		for {
-			conn, _, e := c.LookupTopicWithConnect(
-				lookupConn, topic, requestId, false,
-			)
-			if e != nil {
-				lookupConn.Close()
-				err = errors.Wrap(e, "failed to resend lookup topic to a broker")
-				return
-			} else if conn == nil {
-				c.conn = lookupConn
-				break
-			}
-			// need to close previous lookup connection before
-			// replacing lookupConn with service url from lookup topic response
-			lookupConn.Close()
-			lookupConn = conn
-		}
 	}
 
 	return
@@ -122,7 +123,7 @@ func (c *PulsarClient) GetPartitionedTopicMetadata(
 		Topic:     proto.String(topic),
 		RequestId: proto.Uint64(requestId),
 	}
-	res, err = c.Request(&Request{Message: metadata})
+	res, err = c.conn.Request(&Request{Message: metadata})
 	if err != nil {
 		err = errors.Wrap(err, "failed to request PartitionedTopicMetadata command")
 		return
@@ -136,7 +137,7 @@ func (c *PulsarClient) GetPartitionedTopicMetadata(
 func (c *PulsarClient) KeepAlive() (err error) {
 	var res *Response
 	ping := &pulsar_proto.CommandPing{}
-	res, err = c.Request(&Request{Message: ping})
+	res, err = c.conn.Request(&Request{Message: ping})
 	if err != nil {
 		err = errors.Wrap(err, "failed to request ping command")
 		return
@@ -151,8 +152,10 @@ func (c *PulsarClient) KeepAlive() (err error) {
 	return
 }
 
-func (c *PulsarClient) ReceiveSuccess() (success *pulsar_proto.CommandSuccess, err error) {
-	res, err := c.Receive()
+func (c *PulsarClient) ReceiveSuccess() (
+	success *pulsar_proto.CommandSuccess, err error,
+) {
+	res, err := c.conn.Receive()
 	if err != nil {
 		err = errors.Wrap(err, "failed to receive succcess command")
 		return
@@ -166,13 +169,12 @@ func (c *PulsarClient) ReceiveSuccess() (success *pulsar_proto.CommandSuccess, e
 }
 
 func (c *PulsarClient) Close() {
-	if c.GetConnection() != c.conn {
-		c.conn.Close()
-	}
+	c.conn.Close()
 }
 
 func newAsyncConnFromLookupTopicResponse(
-	config *Config, response *pulsar_proto.CommandLookupTopicResponse,
+	config *Config,
+	response *pulsar_proto.CommandLookupTopicResponse,
 ) (ac *AsyncConn, err error) {
 	var serviceURL string
 	if config.UseTLS {
