@@ -54,9 +54,6 @@ func (p *Producer) ReceiveProducerSuccess() (
 		log.WithFields(log.Fields{
 			"success": success,
 		}).Debug("created producer")
-	case pulsar_proto.BaseCommand_ERROR:
-		cmdError := base.GetRawCommand().GetError()
-		err = errors.New(cmdError.String())
 	default:
 		// TODO: may receive other commands
 		err = errors.Errorf("unknown command type: %v", *t)
