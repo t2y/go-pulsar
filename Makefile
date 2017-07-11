@@ -5,7 +5,8 @@ export PATH := ${GOPATH}/bin:$(PATH)
 # pulsar info
 PULSAR_API_DIR = proto
 PULSAR_API_PROTO = PulsarApi.proto
-PULSAR_API_URL = https://raw.githubusercontent.com/yahoo/pulsar/master/pulsar-common/src/main/proto/${PULSAR_API_PROTO}
+PULSAR_API_BASE_URL = https://raw.githubusercontent.com/apache/incubator-pulsar/master
+PULSAR_API_URL = ${PULSAR_API_BASE_URL}/pulsar-common/src/main/proto/${PULSAR_API_PROTO}
 PULSAR_API_PROTO_PATH = ${PULSAR_API_DIR}/${PULSAR_API_PROTO}
 
 
