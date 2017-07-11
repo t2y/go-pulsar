@@ -69,6 +69,7 @@ func (c *PulsarClient) LookupTopicWithConnect(
 			return
 		}
 	case pulsar_proto.CommandLookupTopicResponse_Connect:
+
 		// do nothing
 	case pulsar_proto.CommandLookupTopicResponse_Failed:
 		err = ErrLookupTopicResponseFailed
@@ -173,11 +174,18 @@ func (c *PulsarClient) Close() {
 func newAsyncConnFromLookupTopicResponse(
 	config *Config, response *pulsar_proto.CommandLookupTopicResponse,
 ) (ac *AsyncConn, err error) {
-	config.ServiceURL, err = url.Parse(response.GetBrokerServiceUrl())
+	var serviceURL string
+	if config.UseTLS {
+		serviceURL = response.GetBrokerServiceUrlTls()
+	} else {
+		serviceURL = response.GetBrokerServiceUrl()
+	}
+	config.ServiceURL, err = url.Parse(serviceURL)
 	if err != nil {
 		err = errors.Wrap(err, "failed to parse service url from lookup topic")
 		return
 	}
+
 	config.RemoteAddr, err = net.ResolveTCPAddr(PROTO_TCP, config.ServiceURL.Host)
 	if err != nil {
 		err = errors.Wrap(err, "failed to resolve remote tcp address")
