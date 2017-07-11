@@ -155,6 +155,13 @@ func getClient(opts *pulsar.Options) (client *pulsar.PulsarClient) {
 		}).Fatal("Failed to connect to a broker")
 	}
 
+	err = client.GetPartitionedTopicMetadata(opts.Topic, 111)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"err": err,
+		}).Fatal("Failed to get partitions topic metadata")
+	}
+
 	return
 }
 
