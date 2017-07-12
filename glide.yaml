@@ -22,6 +22,7 @@ import:
 - package: github.com/ardielle/ardielle-go
   subpackages:
   - rdl
+- package: github.com/pkg/errors
 testImport:
 - package: golang.org/x/sync
   subpackages:
