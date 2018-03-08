@@ -14,7 +14,7 @@ import:
   - ptypes/timestamp
   - ptypes/wrappers
 - package: gopkg.in/ini.v1
-- package: github.com/Sirupsen/logrus
+- package: github.com/sirupsen/logrus
 - package: github.com/jessevdk/go-flags
 - package: github.com/yahoo/athenz
   subpackages:
@@ -23,6 +23,9 @@ import:
   subpackages:
   - rdl
 - package: github.com/pkg/errors
+- package: golang.org/x/sys
+  subpackages:
+  - unix
 testImport:
 - package: golang.org/x/sync
   subpackages:

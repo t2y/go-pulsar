@@ -5,8 +5,8 @@ import (
 	"net/http"
 	"time"
 
-	log "github.com/Sirupsen/logrus"
 	"github.com/pkg/errors"
+	log "github.com/sirupsen/logrus"
 	"github.com/yahoo/athenz/clients/go/zts"
 	"github.com/yahoo/athenz/libs/go/zmssvctoken"
 )
@@ -162,7 +162,7 @@ func GetRoleToken(
 	client := zts.NewClient(url, nil)
 	client.AddCredentials(authHeader, ntoken)
 	roleToken, err = client.GetRoleToken(
-		zts.DomainName(providerDomain), zts.EntityName(role),
+		zts.DomainName(providerDomain), zts.EntityList(role),
 		&defaultRoleTokenMinExpiryTime, &defaultRoleTokenMaxExpiryTime, "",
 	)
 	if err != nil {

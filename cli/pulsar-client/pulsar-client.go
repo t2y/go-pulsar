@@ -6,10 +6,10 @@ import (
 	"strings"
 	"time"
 
-	log "github.com/Sirupsen/logrus"
 	"github.com/golang/protobuf/proto"
 	flags "github.com/jessevdk/go-flags"
 	"github.com/pkg/errors"
+	log "github.com/sirupsen/logrus"
 
 	pulsar "github.com/t2y/go-pulsar"
 	"github.com/t2y/go-pulsar/internal/parse"
@@ -208,7 +208,7 @@ func runProduceCommand(opts *pulsar.Options, client *pulsar.PulsarClient) {
 	)
 
 	producer := pulsar.NewProducer(client)
-	if err := producer.CreateProcuder(opts.Topic, producerId, requestId); err != nil {
+	if err := producer.CreateProducer(opts.Topic, producerId, requestId); err != nil {
 		log.WithFields(log.Fields{
 			"err": err,
 		}).Fatal("Failed to send producer")

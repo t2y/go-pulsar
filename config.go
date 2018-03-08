@@ -9,8 +9,8 @@ import (
 	"os"
 	"time"
 
-	log "github.com/Sirupsen/logrus"
 	"github.com/pkg/errors"
+	log "github.com/sirupsen/logrus"
 	"gopkg.in/ini.v1"
 
 	"github.com/t2y/go-pulsar/internal/parse"
