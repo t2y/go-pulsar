@@ -162,7 +162,7 @@ func GetRoleToken(
 	client := zts.NewClient(url, nil)
 	client.AddCredentials(authHeader, ntoken)
 	roleToken, err = client.GetRoleToken(
-		zts.DomainName(providerDomain), zts.EntityName(role),
+		zts.DomainName(providerDomain), zts.EntityList(role),
 		&defaultRoleTokenMinExpiryTime, &defaultRoleTokenMaxExpiryTime, "",
 	)
 	if err != nil {

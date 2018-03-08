@@ -23,6 +23,9 @@ import:
   subpackages:
   - rdl
 - package: github.com/pkg/errors
+- package: golang.org/x/sys
+  subpackages:
+  - unix
 testImport:
 - package: golang.org/x/sync
   subpackages:
