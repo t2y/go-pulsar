@@ -1,8 +1,8 @@
 package pulsar
 
 import (
-	log "github.com/Sirupsen/logrus"
 	"github.com/golang/protobuf/proto"
+	log "github.com/sirupsen/logrus"
 
 	pulsar_proto "github.com/t2y/go-pulsar/proto/pb"
 )

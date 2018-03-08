@@ -6,10 +6,10 @@ import (
 	"strings"
 	"time"
 
-	log "github.com/Sirupsen/logrus"
 	"github.com/golang/protobuf/proto"
 	flags "github.com/jessevdk/go-flags"
 	"github.com/pkg/errors"
+	log "github.com/sirupsen/logrus"
 
 	pulsar "github.com/t2y/go-pulsar"
 	"github.com/t2y/go-pulsar/internal/parse"

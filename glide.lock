@@ -1,5 +1,5 @@
-hash: 8ed0770421c781e49c2247bfe44c9459dca949d1626d0513b75845185bcdb4f9
-updated: 2017-07-12T13:43:29.152826773+09:00
+hash: b07e1f39655e304f454e283636873542a6a9dfbff317de66c702c29a33dafb66
+updated: 2018-03-08T15:17:40.369449-05:00
 imports:
 - name: github.com/ardielle/ardielle-go
   version: 7d2a39380f7e6beef97bc5462144d6cf902a7ff3
@@ -23,17 +23,22 @@ imports:
   version: 5695738f733662da3e9afc2283bba6f3c879002d
 - name: github.com/pkg/errors
   version: c605e284fe17294bda444b34710735b29d1a9d90
-- name: github.com/Sirupsen/logrus
-  version: 7f976d3a76720c4c27af2ba716b85d2e0a7e38b1
+- name: github.com/sirupsen/logrus
+  version: f4ee69125072b22721efbe639bd0da9c9d19b8cc
 - name: github.com/yahoo/athenz
   version: cc53e4123d013b18cfe3540d98bc3cb73c2adfe2
   subpackages:
   - clients/go/zts
   - libs/go/zmssvctoken
+- name: golang.org/x/crypto
+  version: c7dcf104e3a7a1417abc0230cb0d5240d764159d
+  subpackages:
+  - ssh/terminal
 - name: golang.org/x/sys
   version: abf9c25f54453410d0c6668e519582a9e1115027
   subpackages:
   - unix
+  - windows
 - name: gopkg.in/ini.v1
   version: d3de07a94d22b4a0972deb4b96d790c2c0ce8333
 testImports:
