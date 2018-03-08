@@ -15,7 +15,7 @@ type Producer struct {
 	*PulsarClient
 }
 
-func (p *Producer) CreateProcuder(
+func (p *Producer) CreateProducer(
 	topic string, producerId, requestId uint64,
 ) (err error) {
 	if err = p.SetLookupTopicConnection(topic, requestId, false); err != nil {

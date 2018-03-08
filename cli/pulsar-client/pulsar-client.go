@@ -208,7 +208,7 @@ func runProduceCommand(opts *pulsar.Options, client *pulsar.PulsarClient) {
 	)
 
 	producer := pulsar.NewProducer(client)
-	if err := producer.CreateProcuder(opts.Topic, producerId, requestId); err != nil {
+	if err := producer.CreateProducer(opts.Topic, producerId, requestId); err != nil {
 		log.WithFields(log.Fields{
 			"err": err,
 		}).Fatal("Failed to send producer")
