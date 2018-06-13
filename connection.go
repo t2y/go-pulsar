@@ -240,6 +240,7 @@ func (ac *AsyncConn) decodeFrame(frame *command.Frame) (response *Response) {
 		log.Debug(fmt.Sprintf("%s: received ping", ac.id))
 		ac.conn.SetDeadline(time.Now().Add(ac.config.Timeout))
 		ac.wch <- &Request{Message: &pulsar_proto.CommandPong{}}
+		<-ac.ech
 		log.Debug(fmt.Sprintf("%s: send pong", ac.id))
 		return
 	case pulsar_proto.BaseCommand_CONNECTED:
